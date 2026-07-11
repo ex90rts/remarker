@@ -16,10 +16,14 @@ export async function createExplanationCacheKey(input: {
   model: string;
   selectionKind: "word" | "text";
   promptTemplate: string;
+  targetLanguage: string;
 }): Promise<{ cacheKey: string; contextHash: string }> {
   const normalizedText = input.selectedText.trim().replace(/\s+/g, " ");
   const normalizedPromptTemplate = input.promptTemplate.trim().replace(/\s+/g, " ");
+  const normalizedTargetLanguage = input.targetLanguage.trim().replace(/\s+/g, " ");
   const contextHash = await createContextHash(input.context);
-  const cacheKey = await sha256Hex(`${input.selectionKind}\n${normalizedText}\n${contextHash}\n${input.model}\n${normalizedPromptTemplate}`);
+  const cacheKey = await sha256Hex(
+    `${input.selectionKind}\n${normalizedText}\n${contextHash}\n${input.model}\n${normalizedPromptTemplate}\n${normalizedTargetLanguage}`
+  );
   return { cacheKey, contextHash };
 }

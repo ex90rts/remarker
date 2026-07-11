@@ -10,6 +10,7 @@ import type {
 export type RuntimeMessage =
   | { type: "GET_HIGHLIGHTS_FOR_URL"; urlKey: string }
   | { type: "GET_WORD_EXPLANATIONS_FOR_URL"; urlKey: string }
+  | { type: "GET_VOCABULARY_FOR_URL"; urlKey: string }
   | { type: "SAVE_HIGHLIGHT"; record: HighlightRecord }
   | { type: "UPDATE_HIGHLIGHT_STATUS"; id: string; status: HighlightStatus }
   | { type: "UPDATE_HIGHLIGHT_COLOR"; id: string; color: HighlightColor }
@@ -49,6 +50,5 @@ export interface PronunciationResult {
 export interface ListAllDataResult {
   highlights: HighlightRecord[];
   vocabulary: VocabularyRecord[];
-  explanations: ExplanationRecord[];
   settings: AppSettings;
 }

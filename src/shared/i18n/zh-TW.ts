@@ -61,6 +61,10 @@ export const zhTW: Messages = {
       context: "上下文",
       audio: "發音"
     },
+    filters: {
+      allColors: "全部顏色",
+      reset: "重置"
+    },
     actions: {
       copyHighlightedText: "複製標記文字",
       deleteHighlight: "刪除標記",
@@ -96,6 +100,7 @@ export const zhTW: Messages = {
       behavior: "行為",
       autoCloseLookupPanelOnCopy: "查詞彈窗複製後自動關閉",
       language: "語言",
+      languageHelp: "所選語言為介面語言，同時為大型語言模型翻譯的目標語言。",
       pronunciation: "發音",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "偏好",
@@ -108,7 +113,18 @@ export const zhTW: Messages = {
     },
     notices: {
       settingsSaved: "設定已儲存。",
-      jsonImported: "JSON 已匯入。"
+      jsonImported: "JSON 已匯入。",
+      dataRefreshed: "資料已重新整理。",
+      highlightDeleted: "標記已刪除。",
+      vocabularyDeleted: "生字已刪除。",
+      copied: "已複製。",
+      jsonExported: "JSON 已匯出。",
+      markdownExported: "Markdown 已匯出。",
+      promptRestored: "已恢復預設提示詞。",
+      pronunciationStarted: "已開始播放發音。"
+    },
+    errors: {
+      promptTemplateMissingVariables: "提示詞模板缺少必要變數：{{variables}}"
     },
     statusDescriptions: {
       active: "這條標記已在來源頁面恢復。",

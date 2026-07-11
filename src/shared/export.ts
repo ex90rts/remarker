@@ -1,10 +1,9 @@
-import type { ExplanationRecord, HighlightRecord, VocabularyRecord } from "./types";
+import type { HighlightRecord, VocabularyRecord } from "./types";
 
 export function createBackupJson(input: {
   settings: unknown;
   highlights: HighlightRecord[];
   vocabulary: VocabularyRecord[];
-  explanations: ExplanationRecord[];
   includeSensitive: boolean;
 }): string {
   const settings = structuredClone(input.settings) as Record<string, unknown>;
@@ -23,47 +22,54 @@ export function createBackupJson(input: {
       schemaVersion: 1,
       settings,
       highlights: input.highlights,
-      vocabulary: input.vocabulary,
-      explanations: input.explanations
+      vocabulary: input.vocabulary
     },
     null,
     2
   );
 }
 
-export function createMarkdownExport(input: {
-  highlights: HighlightRecord[];
-  vocabulary: VocabularyRecord[];
-}): string {
-  const highlightsByPage = new Map<string, HighlightRecord[]>();
-  for (const highlight of input.highlights) {
-    const key = `${highlight.sourceTitle || "Untitled"}\n${highlight.sourceUrl}`;
-    highlightsByPage.set(key, [...(highlightsByPage.get(key) ?? []), highlight]);
-  }
+export function createHighlightsMarkdownExport(highlights: HighlightRecord[]): string {
+  const lines = ["# Remarker highlights", "", "## Highlights", ""];
 
-  const lines = ["# Remarker Export", "", `Exported: ${new Date().toISOString()}`, ""];
-
-  for (const [key, highlights] of highlightsByPage.entries()) {
-    const [title, url] = key.split("\n");
-    lines.push(`## ${title}`, "", `Source: ${url}`, "", "### Highlights", "");
-    for (const highlight of highlights) {
-      lines.push(`- ${highlight.selectedText}`);
-      lines.push(`  - Color: ${highlight.color}`);
-      lines.push(`  - Created: ${highlight.createdAt}`);
-    }
-    lines.push("");
-  }
-
-  if (input.vocabulary.length > 0) {
-    lines.push("## Vocabulary", "");
-    for (const item of input.vocabulary) {
-      lines.push(`- ${item.word}`);
-      if (item.translation) lines.push(`  - Meaning: ${item.translation}`);
-      if (item.contextSentence) lines.push(`  - Context: ${item.contextSentence}`);
-      lines.push(`  - Source: ${item.sourceUrl}`);
-      lines.push(`  - Created: ${item.createdAt}`);
-    }
+  for (const highlight of highlights) {
+    lines.push(`- ${highlight.selectedText}`);
+    lines.push(`  - color: ${highlight.color}`);
+    lines.push(`  - sourceTitle: ${highlight.sourceTitle || ""}`);
+    lines.push(`  - sourceLink: ${highlight.sourceUrl}`);
+    lines.push(`  - createdAt: ${highlight.createdAt}`);
   }
 
   return lines.join("\n");
+}
+
+export function createVocabularyMarkdownExport(vocabulary: VocabularyRecord[]): string {
+  const lines = ["# Remarker new words", ""];
+
+  for (const item of vocabulary) {
+    lines.push(`## ${formatMarkdownHeading(item.word, "Untitled")}`);
+    lines.push(`- sourceTitle: ${item.sourceTitle || ""}`);
+    lines.push(`- sourceLink: ${item.sourceUrl}`);
+    lines.push(`- context: ${item.contextSentence || ""}`);
+    lines.push("- explain:");
+    lines.push("  ```markdown");
+    lines.push(indentCodeBlock(item.translation || ""));
+    lines.push("  ```");
+    lines.push(`- createdAt: ${item.createdAt}`);
+    lines.push("");
+  }
+
+  return lines.join("\n").trimEnd();
+}
+
+function formatMarkdownHeading(value: string, fallback: string): string {
+  return value.replace(/\s+/g, " ").replace(/^#+\s*/, "").trim() || fallback;
+}
+
+function indentCodeBlock(value: string): string {
+  return value
+    .replaceAll("```", "\\`\\`\\`")
+    .split("\n")
+    .map((line) => `  ${line}`)
+    .join("\n");
 }

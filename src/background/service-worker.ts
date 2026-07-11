@@ -13,11 +13,19 @@ import {
   saveSettings
 } from "../shared/repositories/db";
 import type {
+  AppSettings,
   ExplanationRecord,
   HighlightRecord,
   HighlightStatus,
   VocabularyRecord
 } from "../shared/types";
+
+const TARGET_LANGUAGE_NAMES: Record<AppSettings["ui"]["language"], string> = {
+  "zh-CN": "Simplified Chinese",
+  "zh-TW": "Traditional Chinese",
+  en: "English",
+  es: "Spanish"
+};
 
 chrome.runtime.onInstalled.addListener(async () => {
   const cache = await chrome.storage.local.get(["globalEnabled", "disabledSites", "schemaVersion"]);
@@ -46,6 +54,9 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
     case "GET_WORD_EXPLANATIONS_FOR_URL":
       return getWordExplanationsForUrl(message.urlKey);
 
+    case "GET_VOCABULARY_FOR_URL":
+      return getVocabularyForUrl(message.urlKey);
+
     case "SAVE_HIGHLIGHT":
       await putInStore("highlights", message.record);
       return message.record;
@@ -65,8 +76,7 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
       return message.record;
 
     case "DELETE_VOCABULARY":
-      await deleteFromStore("vocabulary", message.id);
-      return { id: message.id };
+      return deleteVocabulary(message.id);
 
     case "EXPLAIN_SELECTION":
       return explainSelection(message);
@@ -88,7 +98,8 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
         getAllFromStore<ExplanationRecord>("explanations"),
         getSettings()
       ]);
-      return { highlights, vocabulary, explanations, settings };
+      const mergedVocabulary = await mergeVocabularyWithLegacyExplanations(vocabulary, explanations);
+      return { highlights, vocabulary: mergedVocabulary, settings };
     }
 
     case "IMPORT_SNAPSHOT":
@@ -127,16 +138,21 @@ async function updateHighlightColor(id: string, color: HighlightRecord["color"])
 
 async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_SELECTION" }>): Promise<ExplanationRecord> {
   const settings = await getSettings();
+  const targetLanguage = getTargetLanguageName(settings);
   const { cacheKey, contextHash } = await createExplanationCacheKey({
     selectedText: input.selectedText,
     context: input.context,
     model: settings.llm.model,
     selectionKind: input.selectionKind,
-    promptTemplate: settings.llm.promptTemplate
+    promptTemplate: settings.llm.promptTemplate,
+    targetLanguage
   });
 
   const cached = await getExplanationByCacheKey(cacheKey);
-  if (cached && !input.forceRefresh) return cached;
+  if (cached && !input.forceRefresh) {
+    if (input.selectionKind === "word") await upsertVocabularyFromExplanation(cached);
+    return cached;
+  }
 
   if (!settings.llm.apiKey.trim()) {
     throw new Error("LLM API key is not configured.");
@@ -149,6 +165,7 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
     temperature: settings.llm.temperature,
     timeoutMs: settings.llm.timeoutMs,
     promptTemplate: settings.llm.promptTemplate,
+    targetLanguage,
     selectionKind: input.selectionKind,
     selectedText: input.selectedText,
     context: input.context
@@ -169,6 +186,7 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
   };
 
   await putInStore("explanations", record);
+  if (input.selectionKind === "word") await upsertVocabularyFromExplanation(record);
   return record;
 }
 
@@ -179,6 +197,108 @@ async function getWordExplanationsForUrl(urlKey: string): Promise<ExplanationRec
     if (record.selectionKind) return record.selectionKind === "word";
     return isWordLikeSelection(record.selectedText);
   });
+}
+
+async function getVocabularyForUrl(urlKey: string): Promise<VocabularyRecord[]> {
+  const [vocabulary, explanations] = await Promise.all([
+    getAllFromStore<VocabularyRecord>("vocabulary"),
+    getAllFromStore<ExplanationRecord>("explanations")
+  ]);
+  const mergedVocabulary = await mergeVocabularyWithLegacyExplanations(vocabulary, explanations);
+  return mergedVocabulary.filter((record) => safeNormalizeUrlKey(record.sourceUrl) === urlKey);
+}
+
+async function deleteVocabulary(id: string): Promise<{ id: string }> {
+  const [vocabulary, explanations] = await Promise.all([
+    getAllFromStore<VocabularyRecord>("vocabulary"),
+    getAllFromStore<ExplanationRecord>("explanations")
+  ]);
+  const record = vocabulary.find((item) => item.id === id);
+  const mergeKey = record ? getVocabularyMergeKey(record) : undefined;
+
+  await deleteFromStore("vocabulary", id);
+
+  for (const explanation of explanations) {
+    if (explanation.id === id || (mergeKey && getVocabularyMergeKey(vocabularyFromExplanation(explanation)) === mergeKey)) {
+      await deleteFromStore("explanations", explanation.id);
+    }
+  }
+
+  return { id };
+}
+
+async function mergeVocabularyWithLegacyExplanations(
+  vocabulary: VocabularyRecord[],
+  explanations: ExplanationRecord[]
+): Promise<VocabularyRecord[]> {
+  const byKey = new Map(vocabulary.map((record) => [getVocabularyMergeKey(record), record]));
+  let changed = false;
+
+  for (const explanation of explanations) {
+    if (!isWordLikeSelection(explanation.selectedText)) continue;
+    const record = vocabularyFromExplanation(explanation);
+    const key = getVocabularyMergeKey(record);
+    const existing = byKey.get(key);
+
+    if (!existing) {
+      byKey.set(key, record);
+      await putInStore("vocabulary", record);
+      changed = true;
+      continue;
+    }
+
+    if (!existing.translation && record.translation) {
+      const next = { ...existing, translation: record.translation, updatedAt: new Date().toISOString() };
+      byKey.set(key, next);
+      await putInStore("vocabulary", next);
+      changed = true;
+    }
+  }
+
+  return changed ? [...byKey.values()] : vocabulary;
+}
+
+async function upsertVocabularyFromExplanation(explanation: ExplanationRecord): Promise<VocabularyRecord> {
+  const next = vocabularyFromExplanation(explanation);
+  const records = await getAllFromStore<VocabularyRecord>("vocabulary");
+  const existing = records.find((record) => getVocabularyMergeKey(record) === getVocabularyMergeKey(next));
+  const record = existing
+    ? {
+        ...existing,
+        sourceTitle: explanation.sourceTitle,
+        translation: explanation.result,
+        updatedAt: new Date().toISOString()
+      }
+    : next;
+
+  await putInStore("vocabulary", record);
+  return record;
+}
+
+function vocabularyFromExplanation(explanation: ExplanationRecord): VocabularyRecord {
+  return {
+    id: explanation.id,
+    word: explanation.selectedText,
+    normalizedWord: explanation.selectedText.trim().toLowerCase(),
+    sourceUrl: explanation.sourceUrl,
+    sourceTitle: explanation.sourceTitle,
+    contextSentence: explanation.context,
+    translation: explanation.result,
+    createdAt: explanation.createdAt,
+    updatedAt: explanation.createdAt
+  };
+}
+
+function getVocabularyMergeKey(record: VocabularyRecord): string {
+  return [
+    record.normalizedWord || record.word.trim().toLowerCase(),
+    safeNormalizeUrlKey(record.sourceUrl),
+    record.contextSentence.trim().replace(/\s+/g, " ")
+  ].join("\n");
+}
+
+function getTargetLanguageName(settings: AppSettings): string {
+  return TARGET_LANGUAGE_NAMES[settings.ui.language] ?? TARGET_LANGUAGE_NAMES.en;
 }
 
 function safeNormalizeUrlKey(sourceUrl: string): string {
@@ -200,6 +320,7 @@ async function callOpenAiCompatibleApi(input: {
   temperature: number;
   timeoutMs: number;
   promptTemplate: string;
+  targetLanguage: string;
   selectionKind: "word" | "text";
   selectedText: string;
   context: string;
@@ -208,10 +329,7 @@ async function callOpenAiCompatibleApi(input: {
   const timeoutId = setTimeout(() => controller.abort(), input.timeoutMs);
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const prompt = renderPromptTemplate(input.promptTemplate, {
-    task:
-      input.selectionKind === "word"
-        ? "Explain the selected English word in context."
-        : "Translate the selected text according to the provided context.",
+    task: buildTask(input.selectionKind, input.targetLanguage),
     selection: input.selectedText,
     context: input.context
   });
@@ -264,6 +382,16 @@ function renderPromptTemplate(
     .replaceAll("{{task}}", values.task)
     .replaceAll("{{selection}}", values.selection)
     .replaceAll("{{context}}", values.context);
+}
+
+function buildTask(selectionKind: "word" | "text", targetLanguage: string): string {
+  const languageInstruction =
+    `Infer the source language for translation or word lookup from the context; default to English when uncertain. The target language is ${targetLanguage}.`;
+  const taskInstruction =
+    selectionKind === "word"
+      ? "Explain the selected word in context."
+      : "Translate the selected text according to the provided context.";
+  return `${languageInstruction} ${taskInstruction}`;
 }
 
 async function getPronunciation(word: string): Promise<PronunciationResult> {

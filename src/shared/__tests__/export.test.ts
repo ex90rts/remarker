@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createBackupJson, createMarkdownExport } from "../export";
+import { createBackupJson, createHighlightsMarkdownExport, createVocabularyMarkdownExport } from "../export";
 import type { HighlightRecord, VocabularyRecord } from "../types";
 
 const highlight: HighlightRecord = {
@@ -42,17 +42,30 @@ describe("export helpers", () => {
       },
       highlights: [highlight],
       vocabulary: [vocabulary],
-      explanations: [],
       includeSensitive: false
     });
 
     expect(json).not.toContain("secret");
     expect(json).not.toContain("dict-secret");
+    expect(json).not.toContain("explanations");
   });
 
-  it("creates readable markdown", () => {
-    const markdown = createMarkdownExport({ highlights: [highlight], vocabulary: [vocabulary] });
-    expect(markdown).toContain("A useful sentence.");
-    expect(markdown).toContain("useful");
+  it("creates highlights markdown", () => {
+    const markdown = createHighlightsMarkdownExport([highlight]);
+    expect(markdown).toContain("# Remarker highlights");
+    expect(markdown).toContain("- A useful sentence.");
+    expect(markdown).toContain("  - color: yellow");
+    expect(markdown).toContain("  - sourceTitle: Doc");
+    expect(markdown).toContain("  - sourceLink: https://example.com/doc");
+  });
+
+  it("creates vocabulary markdown", () => {
+    const markdown = createVocabularyMarkdownExport([vocabulary]);
+    expect(markdown).toContain("# Remarker new words");
+    expect(markdown).toContain("## useful");
+    expect(markdown).toContain("- sourceTitle: Doc");
+    expect(markdown).toContain("- sourceLink: https://example.com/doc");
+    expect(markdown).toContain("- context: A useful sentence.");
+    expect(markdown).toContain("  ```markdown\n  有用的\n  ```");
   });
 });

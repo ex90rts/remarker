@@ -58,11 +58,18 @@ interface ExplanationRecord {
   createdAt: string;
 }
 
+interface VocabularyRecord {
+  id: string;
+  word: string;
+  sourceUrl: string;
+  translation?: string;
+  createdAt: string;
+}
+
 interface ContentMessages {
   copy: string;
   speak: string;
   explain: string;
-  saveWord: string;
   translate: string;
   splitHighlight: string;
   highlight: string;
@@ -87,7 +94,6 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     copy: "复制",
     speak: "发音",
     explain: "解释",
-    saveWord: "加入生词表",
     translate: "翻译",
     splitHighlight: "拆分划线",
     highlight: "划线",
@@ -110,7 +116,6 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     copy: "複製",
     speak: "發音",
     explain: "解釋",
-    saveWord: "加入生字表",
     translate: "翻譯",
     splitHighlight: "拆分標記",
     highlight: "標記",
@@ -133,7 +138,6 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     copy: "Copy",
     speak: "Speak",
     explain: "Explain",
-    saveWord: "Save word",
     translate: "Translate",
     splitHighlight: "Split highlight",
     highlight: "Highlight",
@@ -156,7 +160,6 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     copy: "Copiar",
     speak: "Pronunciar",
     explain: "Explicar",
-    saveWord: "Guardar palabra",
     translate: "Traducir",
     splitHighlight: "Dividir resaltado",
     highlight: "Resaltar",
@@ -199,7 +202,6 @@ let toolbarPinned = false;
 let suppressSelectionChangeUntil = 0;
 let transientTimer: number | undefined;
 let lookupPanelTimer: number | undefined;
-let currentExplanationMarkdown: string | undefined;
 let t: ContentMessages = getContentMessages(detectBrowserLanguage());
 let autoCloseLookupPanelOnCopy = false;
 
@@ -512,7 +514,6 @@ function handleSelectionChange(): void {
 function renderToolbar(selection: SelectionState): void {
   panelPinned = false;
   toolbarPinned = false;
-  currentExplanationMarkdown = undefined;
   clearTransientTimer();
   toolbar.className = "toolbar";
   toolbar.replaceChildren();
@@ -526,7 +527,6 @@ function renderToolbar(selection: SelectionState): void {
         explainCurrentSelection(false),
       ),
     );
-    toolbar.append(createIconButton("book-plus", t.saveWord, saveCurrentWord));
   } else {
     toolbar.append(
       createIconButton("sparkles", t.translate, () =>
@@ -606,7 +606,6 @@ async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
   if (!currentSelection) return;
 
   suppressSelectionChange();
-  currentExplanationMarkdown = undefined;
   showExplanationPanel(
     currentSelection.isWord ? t.explainingProgress : t.translatingProgress,
     { isLoading: true },
@@ -621,36 +620,18 @@ async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
     forceRefresh,
   });
 
-  currentExplanationMarkdown = explanation.result;
   showExplanationPanel(explanation.result, { isLoading: false });
   if (currentSelection.isWord) {
-    applyLookupMarkers([explanation]);
+    applyLookupMarkers([
+      {
+        id: explanation.id,
+        word: explanation.selectedText,
+        sourceUrl: explanation.sourceUrl,
+        translation: explanation.result,
+        createdAt: explanation.createdAt,
+      },
+    ]);
   }
-}
-
-async function saveCurrentWord(): Promise<void> {
-  if (!currentSelection) return;
-  await createVocabularyRecord(currentExplanationMarkdown);
-  showTransientSuccess(currentSelection.rect);
-}
-
-async function createVocabularyRecord(translation?: string): Promise<void> {
-  if (!currentSelection) return;
-  const now = new Date().toISOString();
-  await sendMessage({
-    type: "SAVE_VOCABULARY",
-    record: {
-      id: crypto.randomUUID(),
-      word: currentSelection.text,
-      normalizedWord: currentSelection.text.toLowerCase(),
-      sourceUrl: location.href,
-      sourceTitle: document.title,
-      contextSentence: getContextForRange(currentSelection.range),
-      translation: translation?.trim() || undefined,
-      createdAt: now,
-      updatedAt: now,
-    },
-  });
 }
 
 async function saveHighlight(
@@ -782,26 +763,26 @@ async function restoreHighlights(): Promise<void> {
 }
 
 async function restoreLookupExplanations(): Promise<void> {
-  const records = await sendMessage<ExplanationRecord[]>({
-    type: "GET_WORD_EXPLANATIONS_FOR_URL",
+  const records = await sendMessage<VocabularyRecord[]>({
+    type: "GET_VOCABULARY_FOR_URL",
     urlKey: currentUrlKey,
   });
   applyLookupMarkers(records);
 }
 
-function applyLookupMarkers(records: ExplanationRecord[]): void {
+function applyLookupMarkers(records: VocabularyRecord[]): void {
   const wordRecords = getLatestWordRecords(records);
   if (wordRecords.length === 0) return;
 
   const snapshot = getAnchorTextSnapshot();
   const plan: Array<{
-    record: ExplanationRecord;
+    record: VocabularyRecord;
     range: Range;
     start: number;
   }> = [];
 
   for (const record of wordRecords) {
-    const word = record.selectedText.trim();
+    const word = record.word.trim();
     for (const start of findWordMatchOffsets(snapshot.text, word)) {
       const range = createRangeFromTextOffsets(
         start,
@@ -822,12 +803,12 @@ function applyLookupMarkers(records: ExplanationRecord[]): void {
 }
 
 function getLatestWordRecords(
-  records: ExplanationRecord[],
-): ExplanationRecord[] {
-  const byWord = new Map<string, ExplanationRecord>();
+  records: VocabularyRecord[],
+): VocabularyRecord[] {
+  const byWord = new Map<string, VocabularyRecord>();
 
   for (const record of records) {
-    const word = record.selectedText.trim();
+    const word = record.word.trim();
     if (!WORD_PATTERN.test(word)) continue;
     const key = word.toLowerCase();
     const existing = byWord.get(key);
@@ -869,7 +850,7 @@ function isAsciiWordChar(value: string): boolean {
   return /^[A-Za-z]$/.test(value);
 }
 
-function wrapLookupRange(range: Range, record: ExplanationRecord): void {
+function wrapLookupRange(range: Range, record: VocabularyRecord): void {
   if (rangeIntersectsSelector(range, `.${LOOKUP_CLASS}`)) return;
 
   const wrapper = document.createElement("span");
@@ -1200,18 +1181,6 @@ function showExplanationPanel(
     );
     actions.append(refreshButton);
 
-    if (currentSelection.isWord) {
-      const saveWordButton = createIconButton(
-        "book-plus",
-        t.saveWord,
-        async () => {
-          await createVocabularyRecord(text);
-          showButtonSuccess(saveWordButton, "book-plus");
-        },
-      );
-      actions.append(saveWordButton);
-    }
-
     const copyExplanationButton = createIconButton(
       "copy",
       t.copyExplanation,
@@ -1264,7 +1233,7 @@ function createLoadingSkeleton(): HTMLElement {
 
 function showLookupExplanationPanel(
   anchor: HTMLElement,
-  record: ExplanationRecord,
+  record: VocabularyRecord,
 ): void {
   if (lookupPanelTimer !== undefined) {
     window.clearTimeout(lookupPanelTimer);
@@ -1280,12 +1249,12 @@ function showLookupExplanationPanel(
   const header = document.createElement("div");
   header.className = "panel-header";
   const title = document.createElement("span");
-  title.textContent = record.selectedText;
+  title.textContent = record.word;
   const actions = document.createElement("div");
   actions.className = "panel-actions";
   actions.style.marginTop = "0";
   const copyButton = createIconButton("copy", t.copyExplanation, async () => {
-    await navigator.clipboard.writeText(record.result);
+    await navigator.clipboard.writeText(record.translation ?? "");
     showButtonSuccess(copyButton, "copy");
   });
   actions.append(copyButton);
@@ -1293,7 +1262,7 @@ function showLookupExplanationPanel(
 
   const body = document.createElement("div");
   body.className = "panel-body markdown-body";
-  body.innerHTML = markdownToSafeHtml(record.result);
+  body.innerHTML = markdownToSafeHtml(record.translation || "");
   panel.append(header, body);
 
   panel.addEventListener("mouseenter", clearLookupPanelHideTimer, {

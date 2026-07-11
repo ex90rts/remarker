@@ -59,6 +59,10 @@ export const en = {
       context: "Context",
       audio: "Audio"
     },
+    filters: {
+      allColors: "All colors",
+      reset: "Reset"
+    },
     actions: {
       copyHighlightedText: "Copy highlighted text",
       deleteHighlight: "Delete highlight",
@@ -94,6 +98,7 @@ export const en = {
       behavior: "Behavior",
       autoCloseLookupPanelOnCopy: "Automatically close lookup popup after copying",
       language: "Language",
+      languageHelp: "The selected language is used for the interface and as the LLM translation target language.",
       pronunciation: "Pronunciation",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "Preferences",
@@ -106,7 +111,18 @@ export const en = {
     },
     notices: {
       settingsSaved: "Settings saved.",
-      jsonImported: "JSON imported."
+      jsonImported: "JSON imported.",
+      dataRefreshed: "Data refreshed.",
+      highlightDeleted: "Highlight deleted.",
+      vocabularyDeleted: "Vocabulary item deleted.",
+      copied: "Copied.",
+      jsonExported: "JSON exported.",
+      markdownExported: "Markdown exported.",
+      promptRestored: "Default prompt restored.",
+      pronunciationStarted: "Pronunciation started."
+    },
+    errors: {
+      promptTemplateMissingVariables: "Prompt template is missing required variables: {{variables}}"
     },
     statusDescriptions: {
       active: "This highlight was restored on the source page.",

@@ -61,6 +61,10 @@ export const es: Messages = {
       context: "Contexto",
       audio: "Audio"
     },
+    filters: {
+      allColors: "Todos los colores",
+      reset: "Restablecer"
+    },
     actions: {
       copyHighlightedText: "Copiar texto resaltado",
       deleteHighlight: "Eliminar resaltado",
@@ -96,6 +100,7 @@ export const es: Messages = {
       behavior: "Comportamiento",
       autoCloseLookupPanelOnCopy: "Cerrar automáticamente el popup de búsqueda después de copiar",
       language: "Idioma",
+      languageHelp: "El idioma seleccionado se usa para la interfaz y como idioma de destino de traducción del LLM.",
       pronunciation: "Pronunciación",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "Preferencias",
@@ -108,7 +113,18 @@ export const es: Messages = {
     },
     notices: {
       settingsSaved: "Ajustes guardados.",
-      jsonImported: "JSON importado."
+      jsonImported: "JSON importado.",
+      dataRefreshed: "Datos actualizados.",
+      highlightDeleted: "Resaltado eliminado.",
+      vocabularyDeleted: "Elemento de vocabulario eliminado.",
+      copied: "Copiado.",
+      jsonExported: "JSON exportado.",
+      markdownExported: "Markdown exportado.",
+      promptRestored: "Prompt predeterminado restaurado.",
+      pronunciationStarted: "Pronunciación iniciada."
+    },
+    errors: {
+      promptTemplateMissingVariables: "A la plantilla de prompt le faltan variables obligatorias: {{variables}}"
     },
     statusDescriptions: {
       active: "Este resaltado se restauró en la página fuente.",

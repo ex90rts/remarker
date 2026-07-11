@@ -1,5 +1,4 @@
 import {
-  Alert,
   AppBar,
   Box,
   Button,
@@ -7,6 +6,7 @@ import {
   Chip,
   Collapse,
   Container,
+  Divider,
   FormControlLabel,
   IconButton,
   MenuItem,
@@ -27,25 +27,27 @@ import {
   Typography
 } from "@mui/material";
 import {
+  Bug,
   ChevronDown,
   ChevronRight,
   Check,
   Copy,
   Download,
-  ExternalLink,
   FileText,
   Github,
   Highlighter,
   Languages,
   RefreshCcw,
+  RotateCcw,
   Settings,
   Trash2,
   Upload,
-  Volume2
+  Volume2,
+  X
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
-import { createBackupJson, createMarkdownExport } from "../shared/export";
+import { createBackupJson, createHighlightsMarkdownExport, createVocabularyMarkdownExport } from "../shared/export";
 import { detectBrowserLanguage, getMessages, interpolate, LANGUAGE_OPTIONS } from "../shared/i18n";
 import type { Messages } from "../shared/i18n";
 import { markdownToSafeHtml } from "../shared/markdown";
@@ -56,9 +58,18 @@ import {
 } from "../shared/types";
 import type { AppSettings, ExplanationRecord, HighlightColor, HighlightRecord, HighlightStatus, VocabularyRecord } from "../shared/types";
 
-type TabKey = "highlights" | "vocabulary" | "explanations" | "settings";
+type TabKey = "highlights" | "vocabulary" | "settings";
+type ToastSeverity = "success" | "error";
 
-const tabKeys: TabKey[] = ["highlights", "vocabulary", "explanations", "settings"];
+interface ToastState {
+  id: number;
+  message: string;
+  severity: ToastSeverity;
+  durationMs?: number;
+}
+
+type Notify = (message: string, severity?: ToastSeverity) => void;
+type RunAction = (action: () => Promise<void> | void, successMessage?: string) => Promise<void>;
 
 const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
   yellow: "#ffe66d",
@@ -69,7 +80,10 @@ const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
 };
 
 const REMARKING_GITHUB_URL = "https://github.com/ex90rts/remarking";
+const REPORT_ISSUE_URL = "https://github.com/ex90rts/remarking/issues/new";
 const RECORDS_PAGE_SIZE = 20;
+const TOAST_DURATION_MS = 1500;
+const PROMPT_REQUIRED_VARIABLES = ["{{task}}", "{{selection}}", "{{context}}"] as const;
 
 const twoLineClampSx = {
   display: "-webkit-box",
@@ -93,7 +107,7 @@ const markdownBodySx = {
 export function App() {
   const [tab, setTab] = useState<TabKey>("highlights");
   const [data, setData] = useState<ListAllDataResult | undefined>();
-  const [notice, setNotice] = useState<string>("");
+  const [toast, setToast] = useState<ToastState | undefined>();
   const [includeSensitive, setIncludeSensitive] = useState(false);
   const language = data?.settings.ui.language ?? detectBrowserLanguage();
   const t = getMessages(language);
@@ -107,11 +121,23 @@ export function App() {
     setData(result);
   }
 
+  function notify(message: string, severity: ToastSeverity = "success") {
+    setToast({ id: Date.now(), message, severity });
+  }
+
+  async function runAction(action: () => Promise<void> | void, successMessage?: string) {
+    try {
+      await action();
+      if (successMessage) notify(successMessage, "success");
+    } catch (error) {
+      notify(formatError(error), "error");
+    }
+  }
+
   const counts = useMemo(
     () => ({
       highlights: data?.highlights.length ?? 0,
-      vocabulary: data?.vocabulary.length ?? 0,
-      explanations: data?.explanations.length ?? 0
+      vocabulary: data?.vocabulary.length ?? 0
     }),
     [data]
   );
@@ -124,40 +150,35 @@ export function App() {
           <Typography variant="h6" sx={{ ml: 1, flexGrow: 1 }}>
             {t.common.appName}
           </Typography>
-          <Button startIcon={<Github size={16} />} href={REMARKING_GITHUB_URL} target="_blank" rel="noreferrer">
-            GitHub
-          </Button>
-          <Button startIcon={<RefreshCcw size={16} />} onClick={reload}>
-            {t.common.refresh}
-          </Button>
+          <Stack direction="row" spacing={1.5}>
+            <Button startIcon={<Github size={16} />} href={REMARKING_GITHUB_URL} target="_blank" rel="noreferrer">
+              GitHub
+            </Button>
+            <Button startIcon={<Bug size={16} />} href={REPORT_ISSUE_URL} target="_blank" rel="noreferrer">
+              Report an issue
+            </Button>
+          </Stack>
         </Toolbar>
       </AppBar>
 
       <Container maxWidth="lg" sx={{ py: 3 }}>
-        {notice ? (
-          <Alert severity="success" onClose={() => setNotice("")} sx={{ mb: 2 }}>
-            {notice}
-          </Alert>
-        ) : null}
-
         <Paper variant="outlined">
           <Tabs value={tab} onChange={(_, value: TabKey) => setTab(value)} sx={{ px: 2, borderBottom: 1, borderColor: "divider" }}>
             <Tab value="highlights" icon={<Highlighter size={16} />} iconPosition="start" label={`${t.options.tabs.highlights} (${counts.highlights})`} />
             <Tab value="vocabulary" icon={<Languages size={16} />} iconPosition="start" label={`${t.options.tabs.vocabulary} (${counts.vocabulary})`} />
-            <Tab value="explanations" icon={<FileText size={16} />} iconPosition="start" label={`${t.options.tabs.explanations} (${counts.explanations})`} />
             <Tab value="settings" icon={<Settings size={16} />} iconPosition="start" label={t.options.tabs.settings} />
           </Tabs>
 
           <Box p={2}>
-            {tab === "highlights" && <HighlightsTab highlights={data?.highlights ?? []} onChange={reload} t={t} />}
-            {tab === "vocabulary" && <VocabularyTab vocabulary={data?.vocabulary ?? []} onChange={reload} t={t} />}
-            {tab === "explanations" && <ExplanationsTab explanations={data?.explanations ?? []} onChange={reload} t={t} />}
+            {tab === "highlights" && <HighlightsTab highlights={data?.highlights ?? []} onChange={reload} runAction={runAction} notify={notify} t={t} />}
+            {tab === "vocabulary" && <VocabularyTab vocabulary={data?.vocabulary ?? []} onChange={reload} runAction={runAction} notify={notify} t={t} />}
             {tab === "settings" && data && (
               <SettingsTab
                 data={data}
                 includeSensitive={includeSensitive}
                 setIncludeSensitive={setIncludeSensitive}
-                setNotice={setNotice}
+                runAction={runAction}
+                notify={notify}
                 onChange={reload}
                 t={t}
               />
@@ -165,276 +186,452 @@ export function App() {
           </Box>
         </Paper>
       </Container>
+      <Toast toast={toast} onClose={() => setToast(undefined)} />
     </Box>
   );
 }
 
-function HighlightsTab({ highlights, onChange, t }: { highlights: HighlightRecord[]; onChange: () => void; t: Messages }) {
-  const sortedHighlights = useMemo(() => sortByCreatedAtDesc(highlights), [highlights]);
-  const { page, pageItems, setPage } = usePagedItems(sortedHighlights);
+function Toast({ toast, onClose }: { toast: ToastState | undefined; onClose: () => void }) {
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(onClose, toast.durationMs ?? TOAST_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, [toast, onClose]);
+
+  if (!toast) return null;
+
+  const isError = toast.severity === "error";
 
   return (
-    <Table size="small">
-      <TableHead>
-        <TableRow>
-          <TableCell>{t.options.columns.highlightedText}</TableCell>
-          <TableCell>{t.options.columns.source}</TableCell>
-          <TableCell>{t.options.columns.status}</TableCell>
-          <TableCell>{t.options.columns.color}</TableCell>
-          <TableCell align="right">{t.options.columns.actions}</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {pageItems.map((highlight) => (
-          <TableRow key={highlight.id}>
-            <TableCell sx={{ maxWidth: 420 }}>
-              <Typography component="div" variant="body2">
-                {highlight.selectedText}
-              </Typography>
-              <Typography component="div" variant="caption" color="text.secondary">
-                {t.common.created} {formatCreatedAt(highlight.createdAt)}
-              </Typography>
-            </TableCell>
-            <TableCell sx={{ width: 240, maxWidth: 240 }}>
-              <Typography component="div" variant="body2" title={highlight.sourceTitle || highlight.sourceUrl} sx={twoLineClampSx}>
-                {highlight.sourceTitle || highlight.sourceUrl}
-              </Typography>
-            </TableCell>
-            <TableCell>
-              <Chip size="small" label={highlight.status} title={getHighlightStatusDescription(highlight.status, t)} />
-            </TableCell>
-            <TableCell>
-              <Box
-                component="span"
-                title={highlight.color}
-                sx={{
-                  display: "inline-block",
-                  width: 22,
-                  height: 22,
-                  borderRadius: "6px",
-                  border: "1px solid rgba(15, 23, 42, 0.16)",
-                  bgcolor: HIGHLIGHT_COLORS[highlight.color],
-                  verticalAlign: "middle"
-                }}
-              />
-            </TableCell>
-            <TableCell align="right">
-              <CopyIconButton label={t.options.actions.copyHighlightedText} text={highlight.selectedText} t={t} />
-              <IconButton href={highlight.sourceUrl} target="_blank" aria-label={t.common.openSource}>
-                <ExternalLink size={16} />
-              </IconButton>
-              <ConfirmDeleteIconButton
-                label={t.options.actions.deleteHighlight}
-                message={t.options.confirmations.deleteHighlight}
-                onConfirm={async () => {
-                  await sendMessage({ type: "DELETE_HIGHLIGHT", id: highlight.id });
-                  onChange();
-                }}
-                t={t}
-              />
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-      <TableFooter>
-        <TableRow>
-          <RecordsTablePagination count={sortedHighlights.length} page={page} onPageChange={setPage} colSpan={5} />
-        </TableRow>
-      </TableFooter>
-    </Table>
+    <Box
+      key={toast.id}
+      role={isError ? "alert" : "status"}
+      sx={{
+        position: "fixed",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 2000,
+        display: "flex",
+        alignItems: "center",
+        gap: 1.25,
+        maxWidth: "min(420px, calc(100vw - 32px))",
+        px: 3.375,
+        py: 2.25,
+        borderRadius: 1,
+        border: "1px solid",
+        borderColor: isError ? "#fecdca" : "#abefc6",
+        boxShadow: "0 18px 48px rgba(15, 23, 42, 0.24)",
+        bgcolor: isError ? "#fef3f2" : "#ecfdf3",
+        color: "text.primary",
+        fontSize: 14,
+        lineHeight: 1.45,
+        overflowWrap: "anywhere"
+      }}
+    >
+      <Box
+        component="span"
+        sx={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          color: isError ? "#d92d20" : "#079455"
+        }}
+      >
+        {isError ? <X size={22} strokeWidth={2.6} /> : <Check size={22} strokeWidth={2.6} />}
+      </Box>
+      <Box component="span">{toast.message}</Box>
+    </Box>
   );
 }
 
-function VocabularyTab({ vocabulary, onChange, t }: { vocabulary: VocabularyRecord[]; onChange: () => void; t: Messages }) {
-  const sortedVocabulary = useMemo(() => sortByCreatedAtDesc(vocabulary), [vocabulary]);
-  const { page, pageItems, setPage } = usePagedItems(sortedVocabulary);
-  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+function SourceLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Typography
+      component="a"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      variant="body2"
+      title={label}
+      sx={{
+        ...twoLineClampSx,
+        color: "primary.main",
+        textDecoration: "none",
+        "&:hover": { textDecoration: "underline" }
+      }}
+    >
+      {label}
+    </Typography>
+  );
+}
+
+function TableActionBar({ filters, actions }: { filters: ReactNode; actions: ReactNode }) {
+  return (
+    <Stack spacing={1.5}>
+      <Stack
+        direction={{ xs: "column", md: "row" }}
+        spacing={1.5}
+        justifyContent="space-between"
+        alignItems={{ xs: "stretch", md: "center" }}
+      >
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          {filters}
+        </Stack>
+        <Stack direction="row" spacing={1} justifyContent={{ xs: "flex-start", md: "flex-end" }}>
+          {actions}
+        </Stack>
+      </Stack>
+      <Divider />
+    </Stack>
+  );
+}
+
+function downloadFile(filename: string, content: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function HighlightsTab({
+  highlights,
+  onChange,
+  runAction,
+  notify,
+  t
+}: {
+  highlights: HighlightRecord[];
+  onChange: () => Promise<void>;
+  runAction: RunAction;
+  notify: Notify;
+  t: Messages;
+}) {
+  const [textFilter, setTextFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [colorFilter, setColorFilter] = useState<HighlightColor | "">("");
+  const filteredHighlights = useMemo(
+    () =>
+      highlights.filter((highlight) => {
+        const matchesText = includesFuzzy(highlight.selectedText, textFilter);
+        const matchesSource = includesFuzzy(`${highlight.sourceTitle || ""} ${highlight.sourceUrl}`, sourceFilter);
+        const matchesColor = !colorFilter || highlight.color === colorFilter;
+        return matchesText && matchesSource && matchesColor;
+      }),
+    [colorFilter, highlights, sourceFilter, textFilter]
+  );
+  const sortedHighlights = useMemo(() => sortByCreatedAtDesc(filteredHighlights), [filteredHighlights]);
+  const { page, pageItems, setPage } = usePagedItems(sortedHighlights);
+  const hasFilters = Boolean(textFilter || sourceFilter || colorFilter);
+
+  function resetFilters() {
+    setTextFilter("");
+    setSourceFilter("");
+    setColorFilter("");
+  }
 
   return (
-    <Table size="small" sx={{ tableLayout: "fixed", width: "100%" }}>
-      <colgroup>
-        <col style={{ width: 48 }} />
-        <col style={{ width: 260 }} />
-        <col style={{ width: 240 }} />
-        <col style={{ width: 240 }} />
-        <col style={{ width: 72 }} />
-        <col style={{ width: 120 }} />
-      </colgroup>
-      <TableHead>
-        <TableRow>
-          <TableCell />
-          <TableCell>{t.options.columns.word}</TableCell>
-          <TableCell>{t.options.columns.context}</TableCell>
-          <TableCell>{t.options.columns.source}</TableCell>
-          <TableCell>{t.options.columns.audio}</TableCell>
-          <TableCell align="right">{t.options.columns.actions}</TableCell>
-        </TableRow>
-      </TableHead>
-      <TableBody>
-        {pageItems.map((item) => (
-          <Fragment key={item.id}>
-            <TableRow>
-              <TableCell>
-                <IconButton
-                  size="small"
-                  aria-label={expandedRows[item.id] ? t.options.actions.collapseTranslation : t.options.actions.expandTranslation}
-                  onClick={() => setExpandedRows((rows) => ({ ...rows, [item.id]: !rows[item.id] }))}
-                >
-                  {expandedRows[item.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </IconButton>
-              </TableCell>
-              <TableCell sx={{ width: 260 }}>
-                <Typography component="div" variant="body2" fontWeight={600}>
-                  {item.word}
+    <Stack spacing={1.5}>
+      <TableActionBar
+        filters={
+          <>
+            <TextField size="small" label={t.options.columns.highlightedText} value={textFilter} onChange={(event) => setTextFilter(event.target.value)} />
+            <TextField size="small" label={t.options.columns.source} value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} />
+            <TextField
+              select
+              size="small"
+              label={t.options.columns.color}
+              value={colorFilter}
+              onChange={(event) => setColorFilter(event.target.value as HighlightColor | "")}
+              sx={{ minWidth: 140 }}
+            >
+              <MenuItem value="">{t.options.filters.allColors}</MenuItem>
+              {(Object.keys(HIGHLIGHT_COLORS) as HighlightColor[]).map((color) => (
+                <MenuItem key={color} value={color}>
+                  {color}
+                </MenuItem>
+              ))}
+            </TextField>
+            <Button variant="outlined" startIcon={<RotateCcw size={16} />} disabled={!hasFilters} onClick={resetFilters}>
+              {t.options.filters.reset}
+            </Button>
+          </>
+        }
+        actions={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={<FileText size={16} />}
+              onClick={() =>
+                void runAction(
+                  () => downloadFile("remarker-highlights.md", createHighlightsMarkdownExport(sortedHighlights), "text/markdown"),
+                  t.options.notices.markdownExported
+                )
+              }
+            >
+              {t.options.actions.export}
+            </Button>
+            <Button variant="outlined" startIcon={<RefreshCcw size={16} />} onClick={() => void runAction(onChange, t.options.notices.dataRefreshed)}>
+              {t.common.refresh}
+            </Button>
+          </>
+        }
+      />
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            <TableCell>{t.options.columns.highlightedText}</TableCell>
+            <TableCell>{t.options.columns.source}</TableCell>
+            <TableCell>{t.options.columns.status}</TableCell>
+            <TableCell>{t.options.columns.color}</TableCell>
+            <TableCell align="center">{t.options.columns.actions}</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {pageItems.map((highlight) => (
+            <TableRow key={highlight.id}>
+              <TableCell sx={{ maxWidth: 420 }}>
+                <Typography component="div" variant="body2">
+                  {highlight.selectedText}
                 </Typography>
-                <Typography component="div" variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
-                  {t.common.created} {formatCreatedAt(item.createdAt)}
+                <Typography component="div" variant="caption" color="text.secondary">
+                  {t.common.created} {formatCreatedAt(highlight.createdAt)}
                 </Typography>
               </TableCell>
               <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                <Typography component="div" variant="body2" title={item.contextSentence} sx={twoLineClampSx}>
-                  {item.contextSentence}
-                </Typography>
-              </TableCell>
-              <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                <Typography component="div" variant="body2" title={item.sourceTitle || item.sourceUrl} sx={twoLineClampSx}>
-                  {item.sourceTitle || item.sourceUrl}
-                </Typography>
+                <SourceLink href={highlight.sourceUrl} label={highlight.sourceTitle || highlight.sourceUrl} />
               </TableCell>
               <TableCell>
-                <IconButton aria-label={interpolate(t.options.actions.speakWord, { word: item.word })} onClick={() => speakWord(item.word)}>
-                  <Volume2 size={16} />
-                </IconButton>
+                <Chip size="small" label={highlight.status} title={getHighlightStatusDescription(highlight.status, t)} />
               </TableCell>
-              <TableCell align="right">
-                <IconButton href={item.sourceUrl} target="_blank" aria-label={t.common.openSource}>
-                  <ExternalLink size={16} />
-                </IconButton>
+              <TableCell>
+                <Box
+                  component="span"
+                  title={highlight.color}
+                  sx={{
+                    display: "inline-block",
+                    width: 22,
+                    height: 22,
+                    borderRadius: "6px",
+                    border: "1px solid rgba(15, 23, 42, 0.16)",
+                    bgcolor: HIGHLIGHT_COLORS[highlight.color],
+                    verticalAlign: "middle"
+                  }}
+                />
+              </TableCell>
+              <TableCell align="center">
+                <CopyIconButton label={t.options.actions.copyHighlightedText} text={highlight.selectedText} notify={notify} t={t} />
                 <ConfirmDeleteIconButton
-                  label={t.options.actions.deleteVocabularyItem}
-                  message={t.options.confirmations.deleteVocabularyItem}
+                  label={t.options.actions.deleteHighlight}
+                  message={t.options.confirmations.deleteHighlight}
                   onConfirm={async () => {
-                    await sendMessage({ type: "DELETE_VOCABULARY", id: item.id });
-                    onChange();
+                    await runAction(async () => {
+                      await sendMessage({ type: "DELETE_HIGHLIGHT", id: highlight.id });
+                      await onChange();
+                    }, t.options.notices.highlightDeleted);
                   }}
                   t={t}
                 />
               </TableCell>
             </TableRow>
-            <TableRow>
-              <TableCell colSpan={6} sx={{ py: 0, borderBottom: expandedRows[item.id] ? undefined : 0 }}>
-                <Collapse in={Boolean(expandedRows[item.id])} timeout="auto" unmountOnExit>
-                  <Box sx={{ px: 2, py: 1.5, ml: 5 }}>
-                    <Box sx={{ bgcolor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 1, p: 1.5, mb: 1.5 }}>
-                      <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 0.5 }}>
-                        {t.options.columns.context}
-                      </Typography>
-                      <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                        {renderHighlightedContext(item.contextSentence || t.common.empty, item.word)}
-                      </Typography>
-                    </Box>
-                    <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
-                      <Typography variant="caption" color="text.secondary">
-                        {t.content.explanation}
-                      </Typography>
-                      <CopyIconButton label={t.options.actions.copyExplanation} text={item.translation || ""} t={t} />
-                    </Stack>
-                    <Box
-                      className="markdown-body"
-                      sx={{
-                        color: item.translation ? "text.primary" : "text.secondary",
-                        fontSize: 14,
-                        lineHeight: 1.65,
-                        overflowWrap: "anywhere",
-                        ...markdownBodySx
-                      }}
-                      dangerouslySetInnerHTML={{ __html: markdownToSafeHtml(item.translation || t.common.empty) }}
-                    />
-                  </Box>
-                </Collapse>
-              </TableCell>
-            </TableRow>
-          </Fragment>
-        ))}
-      </TableBody>
-      <TableFooter>
-        <TableRow>
-          <RecordsTablePagination count={sortedVocabulary.length} page={page} onPageChange={setPage} colSpan={6} />
-        </TableRow>
-      </TableFooter>
-    </Table>
+          ))}
+        </TableBody>
+        <TableFooter>
+          <TableRow>
+            <RecordsTablePagination count={sortedHighlights.length} page={page} onPageChange={setPage} colSpan={5} />
+          </TableRow>
+        </TableFooter>
+      </Table>
+    </Stack>
   );
 }
 
-function ExplanationsTab({ explanations, onChange, t }: { explanations: ExplanationRecord[]; onChange: () => void; t: Messages }) {
-  const sortedExplanations = useMemo(() => sortByCreatedAtDesc(explanations), [explanations]);
-  const { page, pageItems, setPage } = usePagedItems(sortedExplanations);
+function VocabularyTab({
+  vocabulary,
+  onChange,
+  runAction,
+  notify,
+  t
+}: {
+  vocabulary: VocabularyRecord[];
+  onChange: () => Promise<void>;
+  runAction: RunAction;
+  notify: Notify;
+  t: Messages;
+}) {
+  const [wordFilter, setWordFilter] = useState("");
+  const [contextFilter, setContextFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const filteredVocabulary = useMemo(
+    () =>
+      vocabulary.filter((item) => {
+        const matchesWord = includesFuzzy(item.word, wordFilter);
+        const matchesContext = includesFuzzy(item.contextSentence, contextFilter);
+        const matchesSource = includesFuzzy(`${item.sourceTitle || ""} ${item.sourceUrl}`, sourceFilter);
+        return matchesWord && matchesContext && matchesSource;
+      }),
+    [contextFilter, sourceFilter, vocabulary, wordFilter]
+  );
+  const sortedVocabulary = useMemo(() => sortByCreatedAtDesc(filteredVocabulary), [filteredVocabulary]);
+  const { page, pageItems, setPage } = usePagedItems(sortedVocabulary);
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const hasFilters = Boolean(wordFilter || contextFilter || sourceFilter);
+
+  function resetFilters() {
+    setWordFilter("");
+    setContextFilter("");
+    setSourceFilter("");
+  }
 
   return (
-    <Stack spacing={2}>
-      <Stack direction="row" spacing={1} justifyContent="flex-end">
-        <Button
-          startIcon={<Download size={16} />}
-          onClick={() => downloadFile("remarker-explanations.md", createExplanationsMarkdownExport(sortedExplanations, t), "text/markdown")}
-        >
-          {t.options.actions.export}
-        </Button>
-        <ConfirmDeleteButton
-          message={t.options.confirmations.clearExplanations}
-          onConfirm={async () => {
-            await sendMessage({ type: "CLEAR_EXPLANATIONS" });
-            onChange();
-          }}
-          t={t}
-        >
-          {t.options.actions.clearCache}
-        </ConfirmDeleteButton>
-      </Stack>
-      {pageItems.map((item) => (
-        <Paper variant="outlined" sx={{ p: 2 }} key={item.id}>
-          <Stack direction="row" justifyContent="space-between" alignItems="center">
-            <Box>
-              <Typography fontWeight={600}>{item.selectedText}</Typography>
-              <Typography component="div" variant="caption" color="text.secondary">
-                {t.common.created} {formatCreatedAt(item.createdAt)}
-              </Typography>
-            </Box>
-            <Stack direction="row" spacing={0.5}>
-              <CopyIconButton label={t.options.actions.copyExplanation} text={item.result} t={t} />
-              <ConfirmDeleteIconButton
-                label={t.options.actions.deleteExplanation}
-                message={t.options.confirmations.deleteExplanation}
-                onConfirm={async () => {
-                  await sendMessage({ type: "DELETE_EXPLANATION", id: item.id });
-                  onChange();
-                }}
-                t={t}
-              />
-            </Stack>
-          </Stack>
-          <Box
-            className="markdown-body"
-            sx={{
-              mt: 1,
-              fontSize: 14,
-              lineHeight: 1.65,
-              ...markdownBodySx
-            }}
-            dangerouslySetInnerHTML={{ __html: markdownToSafeHtml(item.result) }}
-          />
-          <Typography component="div" variant="caption" color="text.secondary" title={`${item.model} · ${item.sourceTitle || item.sourceUrl}`} sx={{ maxWidth: 240, ...twoLineClampSx }}>
-            {item.model} · {item.sourceTitle || item.sourceUrl}
-          </Typography>
-        </Paper>
-      ))}
-      <TablePagination
-        component="div"
-        rowsPerPageOptions={[RECORDS_PAGE_SIZE]}
-        count={sortedExplanations.length}
-        rowsPerPage={RECORDS_PAGE_SIZE}
-        page={page}
-        onPageChange={(_, nextPage) => setPage(nextPage)}
+    <Stack spacing={1.5}>
+      <TableActionBar
+        filters={
+          <>
+            <TextField size="small" label={t.options.columns.word} value={wordFilter} onChange={(event) => setWordFilter(event.target.value)} />
+            <TextField size="small" label={t.options.columns.context} value={contextFilter} onChange={(event) => setContextFilter(event.target.value)} />
+            <TextField size="small" label={t.options.columns.source} value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} />
+            <Button variant="outlined" startIcon={<RotateCcw size={16} />} disabled={!hasFilters} onClick={resetFilters}>
+              {t.options.filters.reset}
+            </Button>
+          </>
+        }
+        actions={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={<FileText size={16} />}
+              onClick={() =>
+                void runAction(
+                  () => downloadFile("remarker-new-words.md", createVocabularyMarkdownExport(sortedVocabulary), "text/markdown"),
+                  t.options.notices.markdownExported
+                )
+              }
+            >
+              {t.options.actions.export}
+            </Button>
+            <Button variant="outlined" startIcon={<RefreshCcw size={16} />} onClick={() => void runAction(onChange, t.options.notices.dataRefreshed)}>
+              {t.common.refresh}
+            </Button>
+          </>
+        }
       />
+      <Table size="small" sx={{ tableLayout: "fixed", width: "100%" }}>
+        <colgroup>
+          <col style={{ width: 48 }} />
+          <col style={{ width: 260 }} />
+          <col style={{ width: 72 }} />
+          <col style={{ width: 240 }} />
+          <col style={{ width: 240 }} />
+          <col style={{ width: 88 }} />
+        </colgroup>
+        <TableHead>
+          <TableRow>
+            <TableCell />
+            <TableCell>{t.options.columns.word}</TableCell>
+            <TableCell>{t.options.columns.audio}</TableCell>
+            <TableCell>{t.options.columns.context}</TableCell>
+            <TableCell>{t.options.columns.source}</TableCell>
+            <TableCell align="center">{t.options.columns.actions}</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {pageItems.map((item) => (
+            <Fragment key={item.id}>
+              <TableRow>
+                <TableCell>
+                  <IconButton
+                    size="small"
+                    aria-label={expandedRows[item.id] ? t.options.actions.collapseTranslation : t.options.actions.expandTranslation}
+                    onClick={() => setExpandedRows((rows) => ({ ...rows, [item.id]: !rows[item.id] }))}
+                  >
+                    {expandedRows[item.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </IconButton>
+                </TableCell>
+                <TableCell sx={{ width: 260 }}>
+                  <Typography component="div" variant="body2" fontWeight={600}>
+                    {item.word}
+                  </Typography>
+                  <Typography component="div" variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                    {t.common.created} {formatCreatedAt(item.createdAt)}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <IconButton
+                    aria-label={interpolate(t.options.actions.speakWord, { word: item.word })}
+                    onClick={() => void runAction(() => speakWord(item.word), t.options.notices.pronunciationStarted)}
+                  >
+                    <Volume2 size={16} />
+                  </IconButton>
+                </TableCell>
+                <TableCell sx={{ width: 240, maxWidth: 240 }}>
+                  <Typography component="div" variant="body2" title={item.contextSentence} sx={twoLineClampSx}>
+                    {item.contextSentence}
+                  </Typography>
+                </TableCell>
+                <TableCell sx={{ width: 240, maxWidth: 240 }}>
+                  <SourceLink href={item.sourceUrl} label={item.sourceTitle || item.sourceUrl} />
+                </TableCell>
+                <TableCell align="center">
+                  <ConfirmDeleteIconButton
+                    label={t.options.actions.deleteVocabularyItem}
+                    message={t.options.confirmations.deleteVocabularyItem}
+                    onConfirm={async () => {
+                      await runAction(async () => {
+                        await sendMessage({ type: "DELETE_VOCABULARY", id: item.id });
+                        await onChange();
+                      }, t.options.notices.vocabularyDeleted);
+                    }}
+                    t={t}
+                  />
+                </TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell colSpan={6} sx={{ py: 0, borderBottom: expandedRows[item.id] ? undefined : 0 }}>
+                  <Collapse in={Boolean(expandedRows[item.id])} timeout="auto" unmountOnExit>
+                    <Box sx={{ px: 2, py: 1.5, ml: 5 }}>
+                      <Box sx={{ bgcolor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 1, p: 1.5, mb: 1.5 }}>
+                        <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 0.5 }}>
+                          {t.options.columns.context}
+                        </Typography>
+                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+                          {renderHighlightedContext(item.contextSentence || t.common.empty, item.word)}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {t.content.explanation}
+                        </Typography>
+                        <CopyIconButton label={t.options.actions.copyExplanation} text={item.translation || ""} notify={notify} t={t} />
+                      </Stack>
+                      <Box
+                        className="markdown-body"
+                        sx={{
+                          color: item.translation ? "text.primary" : "text.secondary",
+                          fontSize: 14,
+                          lineHeight: 1.65,
+                          overflowWrap: "anywhere",
+                          ...markdownBodySx
+                        }}
+                        dangerouslySetInnerHTML={{ __html: markdownToSafeHtml(item.translation || t.common.empty) }}
+                      />
+                    </Box>
+                  </Collapse>
+                </TableCell>
+              </TableRow>
+            </Fragment>
+          ))}
+        </TableBody>
+        <TableFooter>
+          <TableRow>
+            <RecordsTablePagination count={sortedVocabulary.length} page={page} onPageChange={setPage} colSpan={6} />
+          </TableRow>
+        </TableFooter>
+      </Table>
     </Stack>
   );
 }
@@ -482,7 +679,7 @@ function RecordsTablePagination({
   );
 }
 
-function CopyIconButton({ label, text, t }: { label: string; text: string; t: Messages }) {
+function CopyIconButton({ label, text, notify, t }: { label: string; text: string; notify: Notify; t: Messages }) {
   const [isCopied, setIsCopied] = useState(false);
   const timerRef = useRef<number | undefined>(undefined);
 
@@ -494,13 +691,18 @@ function CopyIconButton({ label, text, t }: { label: string; text: string; t: Me
   );
 
   async function copyText() {
-    await navigator.clipboard.writeText(text);
-    setIsCopied(true);
-    if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      setIsCopied(false);
-      timerRef.current = undefined;
-    }, 2000);
+    try {
+      await navigator.clipboard.writeText(text);
+      setIsCopied(true);
+      notify(t.options.notices.copied);
+      if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => {
+        setIsCopied(false);
+        timerRef.current = undefined;
+      }, 2000);
+    } catch (error) {
+      notify(formatError(error), "error");
+    }
   }
 
   return (
@@ -540,28 +742,6 @@ function ConfirmDeleteIconButton({
         <IconButton aria-label={label} color="error" onClick={open}>
           <Trash2 size={16} />
         </IconButton>
-      )}
-    </ConfirmPopover>
-  );
-}
-
-function ConfirmDeleteButton({
-  children,
-  message,
-  onConfirm,
-  t
-}: {
-  children: ReactNode;
-  message: string;
-  onConfirm: () => Promise<void> | void;
-  t: Messages;
-}) {
-  return (
-    <ConfirmPopover message={message} onConfirm={onConfirm} t={t}>
-      {({ open }) => (
-        <Button startIcon={<Trash2 size={16} />} color="error" onClick={open} sx={{ alignSelf: "flex-start" }}>
-          {children}
-        </Button>
       )}
     </ConfirmPopover>
   );
@@ -629,20 +809,23 @@ function SettingsTab({
   data,
   includeSensitive,
   setIncludeSensitive,
-  setNotice,
+  runAction,
+  notify,
   onChange,
   t
 }: {
   data: ListAllDataResult;
   includeSensitive: boolean;
   setIncludeSensitive: (value: boolean) => void;
-  setNotice: (value: string) => void;
-  onChange: () => void;
+  runAction: RunAction;
+  notify: Notify;
+  onChange: () => Promise<void>;
   t: Messages;
 }) {
   const [settings, setSettings] = useState<AppSettings>(data.settings);
   const [globalEnabled, setGlobalEnabled] = useState(true);
   const [disabledSitesText, setDisabledSitesText] = useState("");
+  const [promptTemplateError, setPromptTemplateError] = useState("");
 
   useEffect(() => setSettings(data.settings), [data.settings]);
   useEffect(() => {
@@ -653,6 +836,17 @@ function SettingsTab({
   }, []);
 
   async function saveSettings() {
+    const missingVariables = getMissingPromptVariables(settings.llm.promptTemplate);
+    if (missingVariables.length > 0) {
+      const message = interpolate(t.options.errors.promptTemplateMissingVariables, {
+        variables: missingVariables.join(", ")
+      });
+      setPromptTemplateError(message);
+      notify(message, "error");
+      return;
+    }
+
+    setPromptTemplateError("");
     await sendMessage({ type: "SAVE_SETTINGS", settings });
     await chrome.storage.local.set({
       globalEnabled,
@@ -661,18 +855,8 @@ function SettingsTab({
         .map((site) => site.trim().toLowerCase())
         .filter(Boolean)
     });
-    setNotice(t.options.notices.settingsSaved);
-    onChange();
-  }
-
-  function download(filename: string, content: string, type: string) {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(url);
+    await onChange();
+    notify(t.options.notices.settingsSaved);
   }
 
   async function importJson(file: File) {
@@ -684,8 +868,7 @@ function SettingsTab({
       explanations?: ExplanationRecord[];
     };
     await sendMessage({ type: "IMPORT_SNAPSHOT", snapshot: parsed });
-    setNotice(t.options.notices.jsonImported);
-    onChange();
+    await onChange();
   }
 
   function updateLanguage(language: AppSettings["ui"]["language"]) {
@@ -701,10 +884,12 @@ function SettingsTab({
   }
 
   function restoreDefaultPromptTemplate() {
+    setPromptTemplateError("");
     setSettings({
       ...settings,
       llm: { ...settings.llm, promptTemplate: getDefaultPromptTemplate(settings.ui.language) }
     });
+    notify(t.options.notices.promptRestored);
   }
 
   return (
@@ -714,6 +899,7 @@ function SettingsTab({
         select
         label={t.options.settings.language}
         value={settings.ui.language}
+        helperText={t.options.settings.languageHelp}
         onChange={(event) =>
           updateLanguage(event.target.value as AppSettings["ui"]["language"])
         }
@@ -746,10 +932,14 @@ function SettingsTab({
       <TextField
         label={t.options.settings.promptTemplate}
         value={settings.llm.promptTemplate}
-        onChange={(event) => setSettings({ ...settings, llm: { ...settings.llm, promptTemplate: event.target.value } })}
+        onChange={(event) => {
+          setPromptTemplateError("");
+          setSettings({ ...settings, llm: { ...settings.llm, promptTemplate: event.target.value } });
+        }}
         multiline
         minRows={12}
-        helperText={t.options.settings.promptTemplateHelp}
+        error={Boolean(promptTemplateError)}
+        helperText={promptTemplateError || t.options.settings.promptTemplateHelp}
       />
       <Button variant="text" size="small" onClick={restoreDefaultPromptTemplate} sx={{ alignSelf: "flex-start", mt: -2 }}>
         {t.options.actions.restoreDefault}
@@ -812,7 +1002,7 @@ function SettingsTab({
         minRows={4}
         helperText={t.options.settings.disabledSitesHelp}
       />
-      <Button variant="contained" onClick={saveSettings}>
+      <Button variant="contained" onClick={() => void runAction(saveSettings)}>
         {t.options.actions.saveSettings}
       </Button>
 
@@ -825,32 +1015,19 @@ function SettingsTab({
         <Button
           startIcon={<Download size={16} />}
           onClick={() =>
-            download(
+            void runAction(() => downloadFile(
               "remarker-backup.json",
               createBackupJson({
                 settings: data.settings,
                 highlights: data.highlights,
                 vocabulary: data.vocabulary,
-                explanations: data.explanations,
                 includeSensitive
               }),
               "application/json"
-            )
+            ), t.options.notices.jsonExported)
           }
         >
           {t.options.actions.exportJson}
-        </Button>
-        <Button
-          startIcon={<FileText size={16} />}
-          onClick={() =>
-            download(
-              "remarker-notes.md",
-              createMarkdownExport({ highlights: data.highlights, vocabulary: data.vocabulary }),
-              "text/markdown"
-            )
-          }
-        >
-          {t.options.actions.exportMarkdown}
         </Button>
         <Button startIcon={<Upload size={16} />} component="label">
           {t.options.actions.importJson}
@@ -860,7 +1037,7 @@ function SettingsTab({
             accept="application/json"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) void importJson(file);
+              if (file) void runAction(() => importJson(file), t.options.notices.jsonImported);
               event.currentTarget.value = "";
             }}
           />
@@ -938,32 +1115,18 @@ function isWordBoundary(char: string | undefined): boolean {
   return !char || !/[A-Za-z0-9]/.test(char);
 }
 
-function downloadFile(filename: string, content: string, type: string) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
+function includesFuzzy(value: string | undefined, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return true;
+  return (value ?? "").toLowerCase().includes(normalizedQuery);
 }
 
-function createExplanationsMarkdownExport(explanations: ExplanationRecord[], t: Messages): string {
-  const lines = [`# ${t.options.export.explanationsTitle}`, "", `${t.options.export.exported}: ${new Date().toISOString()}`, ""];
-
-  for (const item of explanations) {
-    lines.push(`## ${formatMarkdownHeading(item.selectedText, t.options.export.untitled)}`, "");
-    lines.push(`- ${t.common.created}: ${item.createdAt}`);
-    lines.push(`- ${t.options.export.source}: ${item.sourceUrl}`);
-    lines.push(`- ${t.options.export.model}: ${item.model}`, "");
-    lines.push(item.result.trim(), "");
-  }
-
-  return lines.join("\n");
+function getMissingPromptVariables(promptTemplate: string): string[] {
+  return PROMPT_REQUIRED_VARIABLES.filter((variable) => !promptTemplate.includes(variable));
 }
 
-function formatMarkdownHeading(value: string, fallback: string): string {
-  return value.replace(/\s+/g, " ").replace(/^#+\s*/, "").trim() || fallback;
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : "Operation failed.";
 }
 
 async function speakWord(word: string): Promise<void> {

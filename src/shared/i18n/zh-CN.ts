@@ -61,6 +61,10 @@ export const zhCN: Messages = {
       context: "上下文",
       audio: "发音"
     },
+    filters: {
+      allColors: "全部颜色",
+      reset: "重置"
+    },
     actions: {
       copyHighlightedText: "复制划线文本",
       deleteHighlight: "删除划线",
@@ -96,6 +100,7 @@ export const zhCN: Messages = {
       behavior: "行为",
       autoCloseLookupPanelOnCopy: "查词弹窗复制后自动关闭",
       language: "语言",
+      languageHelp: "所选语言为界面语言，同时为大模型翻译的目标语言。",
       pronunciation: "发音",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "偏好",
@@ -108,7 +113,18 @@ export const zhCN: Messages = {
     },
     notices: {
       settingsSaved: "设置已保存。",
-      jsonImported: "JSON 已导入。"
+      jsonImported: "JSON 已导入。",
+      dataRefreshed: "数据已刷新。",
+      highlightDeleted: "划线已删除。",
+      vocabularyDeleted: "生词已删除。",
+      copied: "已复制。",
+      jsonExported: "JSON 已导出。",
+      markdownExported: "Markdown 已导出。",
+      promptRestored: "已恢复默认提示词。",
+      pronunciationStarted: "已开始播放发音。"
+    },
+    errors: {
+      promptTemplateMissingVariables: "提示词模板缺少必需变量：{{variables}}"
     },
     statusDescriptions: {
       active: "这条划线已在来源页面恢复。",
