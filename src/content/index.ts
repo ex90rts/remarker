@@ -54,6 +54,7 @@ interface ExplanationRecord {
   selectionKind?: "word" | "text";
   selectedText: string;
   sourceUrl: string;
+  anchor?: TextAnchor;
   result: string;
   createdAt: string;
 }
@@ -62,6 +63,7 @@ interface VocabularyRecord {
   id: string;
   word: string;
   sourceUrl: string;
+  anchor?: TextAnchor;
   translation?: string;
   createdAt: string;
 }
@@ -87,6 +89,7 @@ interface ContentMessages {
   close: string;
   copied: string;
   savedHighlights: string;
+  configureLlm: string;
 }
 
 const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
@@ -111,6 +114,7 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     close: "关闭",
     copied: "已复制",
     savedHighlights: "已保存 {{count}} 条划线。",
+    configureLlm: "配置大模型",
   },
   "zh-TW": {
     copy: "複製",
@@ -133,6 +137,7 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     close: "關閉",
     copied: "已複製",
     savedHighlights: "已儲存 {{count}} 條標記。",
+    configureLlm: "設定大型語言模型",
   },
   en: {
     copy: "Copy",
@@ -155,6 +160,7 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     close: "Close",
     copied: "Copied",
     savedHighlights: "Saved {{count}} highlight{{plural}}.",
+    configureLlm: "Configure LLM",
   },
   es: {
     copy: "Copiar",
@@ -177,13 +183,17 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     close: "Cerrar",
     copied: "Copiado",
     savedHighlights: "{{count}} resaltado{{plural}} guardado{{plural}}.",
+    configureLlm: "Configurar LLM",
   },
 };
+
+const MISSING_LLM_CONFIG_ERROR = "LLM configuration is incomplete.";
 
 const WORD_PATTERN = /^[A-Za-z]+(?:[-'][A-Za-z]+)*$/;
 const HIGHLIGHT_CLASS = "remarker-highlight";
 const LOOKUP_CLASS = "remarker-lookup";
 const LOOKUP_UNDERLINE_COLOR = "#f97316";
+const CONTEXT_SURROUNDING_CHAR_LIMIT = 800;
 const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
   yellow: "#ffe66d",
   green: "#b7f7c2",
@@ -572,9 +582,7 @@ function createIconButton(
     event.preventDefault();
     event.stopPropagation();
     suppressSelectionChange();
-    Promise.resolve(onClick()).catch((error) =>
-      showStatusPanel(formatError(error), true),
-    );
+    Promise.resolve(onClick()).catch((error) => showErrorPanel(error));
   });
   return button;
 }
@@ -605,6 +613,7 @@ async function speakSelection(): Promise<void> {
 async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
   if (!currentSelection) return;
 
+  const anchor = createTextAnchor(currentSelection.range);
   suppressSelectionChange();
   showExplanationPanel(
     currentSelection.isWord ? t.explainingProgress : t.translatingProgress,
@@ -617,6 +626,7 @@ async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
     context: getContextForRange(currentSelection.range),
     sourceUrl: location.href,
     sourceTitle: document.title,
+    anchor,
     forceRefresh,
   });
 
@@ -627,6 +637,7 @@ async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
         id: explanation.id,
         word: explanation.selectedText,
         sourceUrl: explanation.sourceUrl,
+        anchor: explanation.anchor ?? anchor,
         translation: explanation.result,
         createdAt: explanation.createdAt,
       },
@@ -771,83 +782,26 @@ async function restoreLookupExplanations(): Promise<void> {
 }
 
 function applyLookupMarkers(records: VocabularyRecord[]): void {
-  const wordRecords = getLatestWordRecords(records);
-  if (wordRecords.length === 0) return;
-
   const snapshot = getAnchorTextSnapshot();
   const plan: Array<{
     record: VocabularyRecord;
-    range: Range;
-    start: number;
+    match: RangeMatch;
   }> = [];
 
-  for (const record of wordRecords) {
-    const word = record.word.trim();
-    for (const start of findWordMatchOffsets(snapshot.text, word)) {
-      const range = createRangeFromTextOffsets(
-        start,
-        start + word.length,
-        snapshot,
-      );
-      if (!range || range.collapsed) continue;
-      if (rangeIntersectsSelector(range, `.${LOOKUP_CLASS}`)) continue;
-      plan.push({ record, range, start });
-    }
+  for (const record of records) {
+    if (!record.anchor) continue;
+    const matches = findRangeMatchesForAnchor(record.anchor, snapshot);
+    if (matches.length !== 1) continue;
+    const [match] = matches;
+    if (rangeIntersectsSelector(match.range, `.${LOOKUP_CLASS}`)) continue;
+    plan.push({ record, match });
   }
 
   plan
-    .sort((left, right) => right.start - left.start)
-    .forEach(({ record, range }) => {
-      wrapLookupRange(range, record);
+    .sort((left, right) => right.match.start - left.match.start)
+    .forEach(({ record, match }) => {
+      wrapLookupRange(match.range, record);
     });
-}
-
-function getLatestWordRecords(
-  records: VocabularyRecord[],
-): VocabularyRecord[] {
-  const byWord = new Map<string, VocabularyRecord>();
-
-  for (const record of records) {
-    const word = record.word.trim();
-    if (!WORD_PATTERN.test(word)) continue;
-    const key = word.toLowerCase();
-    const existing = byWord.get(key);
-    if (
-      !existing ||
-      Date.parse(record.createdAt) > Date.parse(existing.createdAt)
-    ) {
-      byWord.set(key, record);
-    }
-  }
-
-  return [...byWord.values()];
-}
-
-function findWordMatchOffsets(source: string, word: string): number[] {
-  const trimmedWord = word.trim();
-  const normalizedSource = source.toLowerCase();
-  const normalizedWord = trimmedWord.toLowerCase();
-  const offsets: number[] = [];
-  if (!normalizedWord) return offsets;
-  let index = normalizedSource.indexOf(normalizedWord);
-
-  while (index !== -1) {
-    const before = source[index - 1] ?? "";
-    const after = source[index + trimmedWord.length] ?? "";
-    if (!isAsciiWordChar(before) && !isAsciiWordChar(after)) {
-      offsets.push(index);
-    }
-    index = normalizedSource.indexOf(
-      normalizedWord,
-      index + Math.max(1, normalizedWord.length),
-    );
-  }
-
-  return offsets;
-}
-
-function isAsciiWordChar(value: string): boolean {
-  return /^[A-Za-z]$/.test(value);
 }
 
 function wrapLookupRange(range: Range, record: VocabularyRecord): void {
@@ -1070,8 +1024,32 @@ function renderExistingHighlightToolbar(
 }
 
 function getContextForRange(range: Range): string {
-  const block = getBlockElement(range.startContainer);
-  return (block?.innerText || range.toString()).trim().slice(0, 2000);
+  const snapshot = getAnchorTextSnapshot();
+  const offsets = getTextOffsetsForRange(range, snapshot);
+  if (!offsets) return range.toString().trim();
+
+  const selectedText = snapshot.text.slice(offsets.start, offsets.end);
+  const beforeAvailable = offsets.start;
+  const afterAvailable = snapshot.text.length - offsets.end;
+  const preferredBefore = Math.floor(CONTEXT_SURROUNDING_CHAR_LIMIT / 2);
+  const preferredAfter = CONTEXT_SURROUNDING_CHAR_LIMIT - preferredBefore;
+  const beforeLength = Math.min(
+    beforeAvailable,
+    preferredBefore +
+      Math.max(0, preferredAfter - Math.min(afterAvailable, preferredAfter)),
+  );
+  const afterLength = Math.min(
+    afterAvailable,
+    CONTEXT_SURROUNDING_CHAR_LIMIT - beforeLength,
+  );
+
+  return [
+    snapshot.text.slice(offsets.start - beforeLength, offsets.start),
+    selectedText,
+    snapshot.text.slice(offsets.end, offsets.end + afterLength),
+  ]
+    .join("")
+    .trim();
 }
 
 function getBlockElement(node: Node): HTMLElement | null {
@@ -1155,6 +1133,45 @@ function showStatusPanel(text: string, isError: boolean): void {
   panel.textContent = text;
   panel.className = `panel visible${isError ? " error" : ""}`;
   positionPanel(currentSelection.rect);
+}
+
+function showErrorPanel(error: unknown): void {
+  const message = formatError(error);
+  if (!isMissingLlmConfigError(message)) {
+    showStatusPanel(message, true);
+    return;
+  }
+
+  if (!currentSelection) return;
+  panelPinned = false;
+  toolbarPinned = false;
+  panel.className = "panel visible error";
+  panel.replaceChildren();
+  panel.append(document.createTextNode(`${message} `));
+
+  const link = document.createElement("button");
+  link.type = "button";
+  link.textContent = t.configureLlm;
+  link.style.height = "auto";
+  link.style.minWidth = "auto";
+  link.style.padding = "0";
+  link.style.color = "#00319d";
+  link.style.background = "transparent";
+  link.style.textDecoration = "underline";
+  link.style.display = "inline";
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void sendMessage({ type: "OPEN_SETTINGS_PAGE" }).catch((error) => {
+      console.warn("[Remarker] failed to open settings", error);
+    });
+  });
+  panel.append(link);
+  positionPanel(currentSelection.rect);
+}
+
+function isMissingLlmConfigError(message: string): boolean {
+  return message === MISSING_LLM_CONFIG_ERROR;
 }
 
 function showExplanationPanel(

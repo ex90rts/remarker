@@ -19,6 +19,7 @@ import type {
   HighlightStatus,
   VocabularyRecord
 } from "../shared/types";
+import { getEffectiveLlmConfig } from "../shared/types";
 
 const TARGET_LANGUAGE_NAMES: Record<AppSettings["ui"]["language"], string> = {
   "zh-CN": "Simplified Chinese",
@@ -91,6 +92,10 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
       await saveSettings(message.settings);
       return message.settings;
 
+    case "OPEN_SETTINGS_PAGE":
+      await chrome.tabs.create({ url: chrome.runtime.getURL("options.html#settings") });
+      return { opened: true };
+
     case "LIST_ALL_DATA": {
       const [highlights, vocabulary, explanations, settings] = await Promise.all([
         getAllFromStore<HighlightRecord>("highlights"),
@@ -138,11 +143,13 @@ async function updateHighlightColor(id: string, color: HighlightRecord["color"])
 
 async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_SELECTION" }>): Promise<ExplanationRecord> {
   const settings = await getSettings();
+  const llm = getEffectiveLlmConfig(settings.llm);
+  const modelIdentity = `${llm.provider}:${llm.model}`;
   const targetLanguage = getTargetLanguageName(settings);
   const { cacheKey, contextHash } = await createExplanationCacheKey({
     selectedText: input.selectedText,
     context: input.context,
-    model: settings.llm.model,
+    model: modelIdentity,
     selectionKind: input.selectionKind,
     promptTemplate: settings.llm.promptTemplate,
     targetLanguage
@@ -150,18 +157,25 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
 
   const cached = await getExplanationByCacheKey(cacheKey);
   if (cached && !input.forceRefresh) {
-    if (input.selectionKind === "word") await upsertVocabularyFromExplanation(cached);
-    return cached;
+    const currentRecord = {
+      ...cached,
+      sourceUrl: input.sourceUrl,
+      sourceTitle: input.sourceTitle,
+      anchor: input.anchor ?? cached.anchor
+    };
+    await putInStore("explanations", currentRecord);
+    if (input.selectionKind === "word") await upsertVocabularyFromExplanation(currentRecord);
+    return currentRecord;
   }
 
-  if (!settings.llm.apiKey.trim()) {
-    throw new Error("LLM API key is not configured.");
+  if (!isLlmConfigured(settings)) {
+    throw new Error("LLM configuration is incomplete.");
   }
 
   const result = await callOpenAiCompatibleApi({
-    baseUrl: settings.llm.baseUrl,
-    apiKey: settings.llm.apiKey,
-    model: settings.llm.model,
+    baseUrl: llm.baseUrl,
+    apiKey: llm.apiKey,
+    model: llm.model,
     temperature: settings.llm.temperature,
     timeoutMs: settings.llm.timeoutMs,
     promptTemplate: settings.llm.promptTemplate,
@@ -180,7 +194,8 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
     contextHash,
     sourceUrl: input.sourceUrl,
     sourceTitle: input.sourceTitle,
-    model: settings.llm.model,
+    anchor: input.anchor,
+    model: modelIdentity,
     result,
     createdAt: new Date().toISOString()
   };
@@ -266,6 +281,7 @@ async function upsertVocabularyFromExplanation(explanation: ExplanationRecord): 
     ? {
         ...existing,
         sourceTitle: explanation.sourceTitle,
+        anchor: explanation.anchor ?? existing.anchor,
         translation: explanation.result,
         updatedAt: new Date().toISOString()
       }
@@ -283,6 +299,7 @@ function vocabularyFromExplanation(explanation: ExplanationRecord): VocabularyRe
     sourceUrl: explanation.sourceUrl,
     sourceTitle: explanation.sourceTitle,
     contextSentence: explanation.context,
+    anchor: explanation.anchor,
     translation: explanation.result,
     createdAt: explanation.createdAt,
     updatedAt: explanation.createdAt
@@ -299,6 +316,15 @@ function getVocabularyMergeKey(record: VocabularyRecord): string {
 
 function getTargetLanguageName(settings: AppSettings): string {
   return TARGET_LANGUAGE_NAMES[settings.ui.language] ?? TARGET_LANGUAGE_NAMES.en;
+}
+
+function isLlmConfigured(settings: AppSettings): boolean {
+  const llm = getEffectiveLlmConfig(settings.llm);
+  return Boolean(
+    llm.baseUrl.trim() &&
+      llm.apiKey.trim() &&
+      llm.model.trim()
+  );
 }
 
 function safeNormalizeUrlKey(sourceUrl: string): string {

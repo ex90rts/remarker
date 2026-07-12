@@ -2,11 +2,22 @@ import type {
   AppSettings,
   ExplanationRecord,
   HighlightRecord,
+  LlmProvider,
+  LlmProviderConfig,
   SiteSetting,
   VocabularyRecord
 } from "../types";
 import { detectBrowserLanguage } from "../i18n";
-import { DEFAULT_SETTINGS, SCHEMA_VERSION, getDefaultPromptTemplate, isDefaultPromptTemplate } from "../types";
+import {
+  DEFAULT_SETTINGS,
+  LLM_PROVIDER_PRESETS,
+  SCHEMA_VERSION,
+  createDefaultLlmProviderConfigs,
+  getDefaultPromptTemplate,
+  normalizeLlmProvider,
+  normalizeLlmProviderConfig,
+  normalizeRecordsPageSize
+} from "../types";
 
 const DB_NAME = "remarker";
 
@@ -133,17 +144,41 @@ export async function importSnapshot(snapshot: {
   for (const record of snapshot.siteSettings ?? []) await saveSiteSetting(record);
 }
 
+type LegacyLlmConfig = Partial<AppSettings["llm"]> & {
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+  providers?: Partial<Record<LlmProvider, Partial<LlmProviderConfig>>>;
+};
+
 function normalizeSettings(settings: AppSettings | undefined): AppSettings {
   const language = settings?.ui?.language ?? detectBrowserLanguage();
-  const llm = {
-    ...DEFAULT_SETTINGS.llm,
-    promptTemplate: getDefaultPromptTemplate(language),
-    ...(settings?.llm ?? {})
-  };
+  const incomingLlm = settings?.llm as LegacyLlmConfig | undefined;
+  const provider = normalizeLlmProvider(incomingLlm?.provider);
+  const providers = createDefaultLlmProviderConfigs();
 
-  if (isDefaultPromptTemplate(llm.promptTemplate)) {
-    llm.promptTemplate = getDefaultPromptTemplate(language);
+  for (const preset of LLM_PROVIDER_PRESETS) {
+    providers[preset.value] = normalizeLlmProviderConfig(
+      preset.value,
+      incomingLlm?.providers?.[preset.value],
+    );
   }
+
+  if (incomingLlm && !incomingLlm.providers) {
+    providers[provider] = normalizeLlmProviderConfig(provider, {
+      baseUrl: incomingLlm.baseUrl,
+      apiKey: incomingLlm.apiKey,
+      model: incomingLlm.model,
+    });
+  }
+
+  const llm: AppSettings["llm"] = {
+    provider,
+    providers,
+    temperature: incomingLlm?.temperature ?? DEFAULT_SETTINGS.llm.temperature,
+    timeoutMs: incomingLlm?.timeoutMs ?? DEFAULT_SETTINGS.llm.timeoutMs,
+    promptTemplate: incomingLlm?.promptTemplate ?? getDefaultPromptTemplate()
+  };
 
   return {
     llm,
@@ -151,7 +186,8 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
     ui: {
       ...DEFAULT_SETTINGS.ui,
       language,
-      ...(settings?.ui ?? {})
+      ...(settings?.ui ?? {}),
+      recordsPageSize: normalizeRecordsPageSize(settings?.ui?.recordsPageSize)
     }
   };
 }

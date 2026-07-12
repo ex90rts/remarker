@@ -9,7 +9,15 @@ export function createBackupJson(input: {
   const settings = structuredClone(input.settings) as Record<string, unknown>;
 
   if (!input.includeSensitive && typeof settings.llm === "object" && settings.llm) {
-    (settings.llm as Record<string, unknown>).apiKey = "";
+    const llm = settings.llm as Record<string, unknown>;
+    llm.apiKey = "";
+    if (typeof llm.providers === "object" && llm.providers) {
+      for (const providerConfig of Object.values(llm.providers)) {
+        if (typeof providerConfig === "object" && providerConfig) {
+          (providerConfig as Record<string, unknown>).apiKey = "";
+        }
+      }
+    }
   }
 
   if (!input.includeSensitive && typeof settings.pronunciation === "object" && settings.pronunciation) {

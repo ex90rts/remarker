@@ -4,6 +4,7 @@ import type {
   HighlightColor,
   HighlightRecord,
   HighlightStatus,
+  TextAnchor,
   VocabularyRecord
 } from "./types";
 
@@ -24,11 +25,13 @@ export type RuntimeMessage =
       context: string;
       sourceUrl: string;
       sourceTitle: string;
+      anchor?: TextAnchor;
       forceRefresh?: boolean;
     }
   | { type: "GET_PRONUNCIATION"; word: string }
   | { type: "GET_SETTINGS" }
   | { type: "SAVE_SETTINGS"; settings: AppSettings }
+  | { type: "OPEN_SETTINGS_PAGE" }
   | { type: "LIST_ALL_DATA" }
   | {
       type: "IMPORT_SNAPSHOT";

@@ -11,7 +11,7 @@ export const es: Messages = {
     cancel: "Cancelar",
     delete: "Eliminar",
     empty: "Vacío",
-    openSource: "Abrir fuente"
+    openSource: "Abrir fuente",
   },
   popup: {
     loading: "Cargando",
@@ -19,7 +19,7 @@ export const es: Messages = {
     noSite: "Sin sitio",
     enableExtension: "Activar extensión",
     enableCurrentSite: "Activar sitio actual",
-    openManagementPage: "Abrir página de gestión"
+    openManagementPage: "Abrir página de gestión",
   },
   content: {
     copy: "Copiar",
@@ -42,14 +42,15 @@ export const es: Messages = {
     copyExplanation: "Copiar explicación",
     close: "Cerrar",
     copied: "Copiado",
-    savedHighlights: "{{count}} resaltado{{plural}} guardado{{plural}}."
+    savedHighlights: "{{count}} resaltado{{plural}} guardado{{plural}}.",
   },
   options: {
     tabs: {
       highlights: "Resaltados",
       vocabulary: "Vocabulario",
       explanations: "Registros de búsqueda",
-      settings: "Ajustes"
+      settings: "Ajustes",
+      about: "Acerca de",
     },
     columns: {
       highlightedText: "Texto resaltado",
@@ -59,11 +60,11 @@ export const es: Messages = {
       actions: "Acciones",
       word: "Palabra",
       context: "Contexto",
-      audio: "Audio"
+      audio: "Audio",
     },
     filters: {
       allColors: "Todos los colores",
-      reset: "Restablecer"
+      reset: "Restablecer",
     },
     actions: {
       copyHighlightedText: "Copiar texto resaltado",
@@ -80,36 +81,57 @@ export const es: Messages = {
       exportMarkdown: "Exportar Markdown",
       importJson: "Importar JSON",
       saveSettings: "Guardar ajustes",
-      restoreDefault: "Restaurar valor predeterminado"
+      restoreDefault: "Restaurar valor predeterminado",
     },
     confirmations: {
       deleteHighlight: "¿Eliminar este resaltado?",
       deleteVocabularyItem: "¿Eliminar este elemento de vocabulario?",
       deleteExplanation: "¿Eliminar este registro de búsqueda?",
-      clearExplanations: "¿Borrar todos los registros de búsqueda?"
+      clearExplanations: "¿Borrar todos los registros de búsqueda?",
     },
     settings: {
       llm: "LLM",
+      llmCostNotice:
+        "Nota: usar un LLM para traducir o consultar palabras puede generar costes, según el proveedor elegido. Configura y guarda tu clave con cuidado.",
+      provider: "Proveedor",
+      providerHelp: "La traducción consume poco coste; prioriza la velocidad de respuesta de la API.",
+      customProvider: "Personalizado",
+      providerDescriptions: {
+        zhipu: "Hay modelos asequibles gratuitos, aunque pueden responder más lento.",
+        gemini: "Incluye una cuota gratuita útil que Google restablece periódicamente.",
+        openrouter: "Hay modelos gratuitos; usa openrouter/free o elige uno en el marketplace.",
+        deepseek: "No tiene cuota gratuita oficial por ahora, pero v4 flash es muy barato: unos CNY 0,02 por 30 llamadas.",
+        aliyun: "Los usuarios nuevos reciben cuota gratuita; después se empieza a facturar.",
+        volcengine: "Los usuarios nuevos reciben cuota gratuita; después se empieza a facturar.",
+        custom: "Usa cualquier recurso que se ajuste a tus necesidades, incluidos modelos locales, si cumple el formato de la API de OpenAI.",
+      },
       baseUrl: "Base URL",
       apiKey: "API Key",
+      apiKeyHelp: "Esta configuración solo se guarda en tu navegador local.",
       model: "Modelo",
+      modelHelp: "Se recomiendan modelos Flash o similares para obtener respuestas más rápidas.",
       temperature: "Temperature",
       timeoutMs: "Tiempo de espera ms",
       promptTemplate: "Plantilla de prompt",
-      promptTemplateHelp: "Variables disponibles: {{task}}, {{selection}}, {{context}}",
+      promptTemplateHelp:
+        "Variables disponibles: {{task}}, {{selection}}, {{context}}",
       behavior: "Comportamiento",
-      autoCloseLookupPanelOnCopy: "Cerrar automáticamente el popup de búsqueda después de copiar",
+      autoCloseLookupPanelOnCopy:
+        "Cerrar automáticamente el popup de búsqueda después de copiar",
       language: "Idioma",
-      languageHelp: "El idioma seleccionado se usa para la interfaz y como idioma de destino de traducción del LLM.",
+      languageHelp:
+        "El idioma seleccionado se usa para la interfaz y como idioma de destino de traducción del LLM.",
       pronunciation: "Pronunciación",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "Preferencias",
       enableExtensionGlobally: "Activar resaltado de páginas globalmente",
+      recordsPageSize: "Tamaño de página de resaltados y vocabulario",
       defaultHighlightColor: "Color de resaltado predeterminado",
       disabledSites: "Sitios desactivados",
       disabledSitesHelp: "Un hostname por línea, por ejemplo: example.com",
       importExport: "Importar / Exportar",
-      includeSensitiveConfig: "Incluir configuración sensible en la exportación JSON"
+      includeSensitiveConfig:
+        "Incluir configuración sensible en la exportación JSON",
     },
     notices: {
       settingsSaved: "Ajustes guardados.",
@@ -121,23 +143,48 @@ export const es: Messages = {
       jsonExported: "JSON exportado.",
       markdownExported: "Markdown exportado.",
       promptRestored: "Prompt predeterminado restaurado.",
-      pronunciationStarted: "Pronunciación iniciada."
+      pronunciationStarted: "Pronunciación iniciada.",
     },
     errors: {
-      promptTemplateMissingVariables: "A la plantilla de prompt le faltan variables obligatorias: {{variables}}"
+      promptTemplateMissingVariables:
+        "A la plantilla de prompt le faltan variables obligatorias: {{variables}}",
     },
     statusDescriptions: {
       active: "Este resaltado se restauró en la página fuente.",
-      not_found: "No se encontró el ancla de texto guardada en la página fuente.",
-      ambiguous: "El ancla de texto guardada coincidió con varios lugares en la página fuente.",
-      pending: "Este resaltado aún no se ha confirmado en una página fuente."
+      not_found:
+        "No se encontró el ancla de texto guardada en la página fuente.",
+      ambiguous:
+        "El ancla de texto guardada coincidió con varios lugares en la página fuente.",
+      pending: "Este resaltado aún no se ha confirmado en una página fuente.",
     },
     export: {
       explanationsTitle: "Registros de búsqueda",
       exported: "Exportado",
       source: "Fuente",
       model: "Modelo",
-      untitled: "Sin título"
-    }
-  }
+      untitled: "Sin título",
+    },
+    about: {
+      plan: {
+        title: "Plan",
+        body: "La próxima función planificada es un calendario de repaso de vocabulario basado en la curva del olvido, para convertir búsquedas rápidas en memoria a largo plazo.",
+      },
+      releases: {
+        title: "Releases",
+        version: "1.0.0",
+        summary:
+          "La primera versión estable se centra en leer, anotar, consultar palabras con IA y conservar el contexto de aprendizaje entre visitas.",
+        feature1:
+          "Resalta pasajes memorables en páginas web y gestiona esos resaltados en un solo lugar.",
+        feature2:
+          "Usa un modelo de IA para explicar palabras seleccionadas en contexto y guardarlas automáticamente en el vocabulario.",
+        feature3:
+          "Al volver a una página, restaura resaltados y subrayados de vocabulario, con traducciones disponibles desde la página.",
+        feature4:
+          "Reproduce la pronunciación de palabras mediante audio de diccionario configurado o síntesis de voz del navegador como respaldo.",
+        feature5:
+          "Importa y exporta los datos clave de aprendizaje para copias de seguridad, repaso y migración.",
+      },
+    },
+  },
 };

@@ -37,7 +37,13 @@ describe("export helpers", () => {
   it("excludes sensitive settings by default", () => {
     const json = createBackupJson({
       settings: {
-        llm: { apiKey: "secret" },
+        llm: {
+          apiKey: "legacy-secret",
+          providers: {
+            zhipu: { apiKey: "zhipu-secret" },
+            gemini: { apiKey: "gemini-secret" }
+          }
+        },
         pronunciation: { merriamWebsterApiKey: "dict-secret" }
       },
       highlights: [highlight],
@@ -45,7 +51,9 @@ describe("export helpers", () => {
       includeSensitive: false
     });
 
-    expect(json).not.toContain("secret");
+    expect(json).not.toContain("legacy-secret");
+    expect(json).not.toContain("zhipu-secret");
+    expect(json).not.toContain("gemini-secret");
     expect(json).not.toContain("dict-secret");
     expect(json).not.toContain("explanations");
   });

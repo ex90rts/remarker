@@ -11,7 +11,7 @@ export const zhCN: Messages = {
     cancel: "取消",
     delete: "删除",
     empty: "空",
-    openSource: "打开来源"
+    openSource: "打开来源",
   },
   popup: {
     loading: "加载中",
@@ -19,7 +19,7 @@ export const zhCN: Messages = {
     noSite: "无站点",
     enableExtension: "启用插件",
     enableCurrentSite: "启用当前站点",
-    openManagementPage: "打开管理页面"
+    openManagementPage: "打开管理页面",
   },
   content: {
     copy: "复制",
@@ -42,14 +42,15 @@ export const zhCN: Messages = {
     copyExplanation: "复制解释",
     close: "关闭",
     copied: "已复制",
-    savedHighlights: "已保存 {{count}} 条划线。"
+    savedHighlights: "已保存 {{count}} 条划线。",
   },
   options: {
     tabs: {
       highlights: "划线",
       vocabulary: "生词表",
       explanations: "查词记录",
-      settings: "设置"
+      settings: "设置",
+      about: "关于",
     },
     columns: {
       highlightedText: "划线文本",
@@ -59,11 +60,11 @@ export const zhCN: Messages = {
       actions: "操作",
       word: "单词",
       context: "上下文",
-      audio: "发音"
+      audio: "发音",
     },
     filters: {
       allColors: "全部颜色",
-      reset: "重置"
+      reset: "重置",
     },
     actions: {
       copyHighlightedText: "复制划线文本",
@@ -80,19 +81,39 @@ export const zhCN: Messages = {
       exportMarkdown: "导出 Markdown",
       importJson: "导入 JSON",
       saveSettings: "保存设置",
-      restoreDefault: "恢复默认"
+      restoreDefault: "恢复默认",
     },
     confirmations: {
       deleteHighlight: "删除这条划线？",
       deleteVocabularyItem: "删除这个生词？",
       deleteExplanation: "删除这条查词记录？",
-      clearExplanations: "清空所有查词记录？"
+      clearExplanations: "清空所有查词记录？",
     },
     settings: {
       llm: "大模型",
+      llmCostNotice:
+        "注意：调用大模型翻译或查词有可能产生费用，由所选择的模型厂商决定，请妥善配置并保存 Key 信息。",
+      provider: "模型厂商",
+      providerHelp:
+        "翻译本身的成本消耗较低，推荐以接口返回速度为第一考量因素。",
+      customProvider: "自定义",
+      providerDescriptions: {
+        zhipu: "有普惠模型可免费使用，但速度偏慢。",
+        gemini: "有一定量的免费额度，官方定期重置，完全够用。",
+        openrouter:
+          "有免费模型可供使用，可使用 openrouter/free 或到官方市场上选择。",
+        deepseek:
+          "官方暂无免费额度，但是 v4 flash 非常便宜，30 次调用约 2 分钱。",
+        aliyun: "新用户有免费额度，免费额度用完后开始计费。",
+        volcengine: "新用户有免费额度，免费额度用完后开始计费。",
+        custom:
+          "根据自己的资源和需求选择，满足 OpenAI API 规范的接口都可以使用，本地模型也可以。",
+      },
       baseUrl: "Base URL",
       apiKey: "API Key",
+      apiKeyHelp: "本配置信息仅会保存到浏览器本地。",
       model: "模型",
+      modelHelp: "建议选用 Flash 或类似类型的模型以加快返回速度。",
       temperature: "Temperature",
       timeoutMs: "超时时间 ms",
       promptTemplate: "提示词模板",
@@ -105,11 +126,12 @@ export const zhCN: Messages = {
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "偏好",
       enableExtensionGlobally: "启用全局页面划线",
+      recordsPageSize: "划线和生词表每页数量",
       defaultHighlightColor: "默认划线颜色",
       disabledSites: "停用站点",
       disabledSitesHelp: "每行一个 hostname，例如：example.com",
       importExport: "导入 / 导出",
-      includeSensitiveConfig: "JSON 导出包含敏感配置"
+      includeSensitiveConfig: "JSON 导出包含敏感配置",
     },
     notices: {
       settingsSaved: "设置已保存。",
@@ -121,23 +143,41 @@ export const zhCN: Messages = {
       jsonExported: "JSON 已导出。",
       markdownExported: "Markdown 已导出。",
       promptRestored: "已恢复默认提示词。",
-      pronunciationStarted: "已开始播放发音。"
+      pronunciationStarted: "已开始播放发音。",
     },
     errors: {
-      promptTemplateMissingVariables: "提示词模板缺少必需变量：{{variables}}"
+      promptTemplateMissingVariables: "提示词模板缺少必需变量：{{variables}}",
     },
     statusDescriptions: {
       active: "这条划线已在来源页面恢复。",
       not_found: "来源页面中未找到保存的文本锚点。",
       ambiguous: "来源页面中匹配到多个位置，无法安全恢复。",
-      pending: "这条划线尚未在来源页面完成恢复确认。"
+      pending: "这条划线尚未在来源页面完成恢复确认。",
     },
     export: {
       explanationsTitle: "查词记录",
       exported: "导出时间",
       source: "来源",
       model: "模型",
-      untitled: "未命名"
-    }
-  }
+      untitled: "未命名",
+    },
+    about: {
+      plan: {
+        title: "Plan",
+        body: "后续计划增加基于遗忘曲线的生词复习计划，让临时查词沉淀为可持续复习的长期记忆。",
+      },
+      releases: {
+        title: "Releases",
+        version: "1.0.0",
+        summary:
+          "第一个稳定版本聚焦外文阅读、内容标注、AI 查词和学习上下文留存。",
+        feature1: "在网页中高亮划线记录精彩内容，并在管理页统一整理。",
+        feature2: "调用 AI 大模型解释选中的生词，并自动保存到生词表。",
+        feature3:
+          "再次访问页面时自动恢复之前的划线和生词下划线，并可查看生词翻译。",
+        feature4: "支持生词发音，优先使用词典音频，并提供浏览器语音兜底。",
+        feature5: "支持关键学习数据导入导出，便于备份、复习和迁移。",
+      },
+    },
+  },
 };

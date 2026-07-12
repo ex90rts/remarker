@@ -24,7 +24,7 @@ import {
   Tabs,
   TextField,
   Toolbar,
-  Typography
+  Typography,
 } from "@mui/material";
 import {
   Bug,
@@ -36,6 +36,7 @@ import {
   FileText,
   Github,
   Highlighter,
+  Info,
   Languages,
   RefreshCcw,
   RotateCcw,
@@ -43,22 +44,50 @@ import {
   Trash2,
   Upload,
   Volume2,
-  X
+  X,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
-import { createBackupJson, createHighlightsMarkdownExport, createVocabularyMarkdownExport } from "../shared/export";
-import { detectBrowserLanguage, getMessages, interpolate, LANGUAGE_OPTIONS } from "../shared/i18n";
+import {
+  createBackupJson,
+  createHighlightsMarkdownExport,
+  createVocabularyMarkdownExport,
+} from "../shared/export";
+import {
+  detectBrowserLanguage,
+  getMessages,
+  interpolate,
+  LANGUAGE_OPTIONS,
+} from "../shared/i18n";
 import type { Messages } from "../shared/i18n";
 import { markdownToSafeHtml } from "../shared/markdown";
-import type { ListAllDataResult, PronunciationResult, RuntimeMessage } from "../shared/messages";
+import type {
+  ListAllDataResult,
+  PronunciationResult,
+  RuntimeMessage,
+} from "../shared/messages";
 import {
+  DEFAULT_RECORDS_PAGE_SIZE,
+  LLM_PROVIDER_PRESETS,
+  RECORDS_PAGE_SIZE_OPTIONS,
+  getLlmProviderPreset,
   getDefaultPromptTemplate,
-  isDefaultPromptTemplate
+  normalizeLlmProviderConfig,
+  normalizeLlmProvider,
+  normalizeRecordsPageSize,
 } from "../shared/types";
-import type { AppSettings, ExplanationRecord, HighlightColor, HighlightRecord, HighlightStatus, VocabularyRecord } from "../shared/types";
+import type {
+  AppSettings,
+  ExplanationRecord,
+  HighlightColor,
+  HighlightRecord,
+  HighlightStatus,
+  LlmProviderConfig,
+  RecordsPageSize,
+  VocabularyRecord,
+} from "../shared/types";
 
-type TabKey = "highlights" | "vocabulary" | "settings";
+type TabKey = "highlights" | "vocabulary" | "settings" | "about";
 type ToastSeverity = "success" | "error";
 
 interface ToastState {
@@ -69,43 +98,71 @@ interface ToastState {
 }
 
 type Notify = (message: string, severity?: ToastSeverity) => void;
-type RunAction = (action: () => Promise<void> | void, successMessage?: string) => Promise<void>;
+type RunAction = (
+  action: () => Promise<void> | void,
+  successMessage?: string,
+) => Promise<void>;
 
 const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
   yellow: "#ffe66d",
   green: "#b7f7c2",
   blue: "#b8ddff",
   pink: "#ffc2d4",
-  purple: "#d8c7ff"
+  purple: "#d8c7ff",
 };
 
 const REMARKING_GITHUB_URL = "https://github.com/ex90rts/remarking";
 const REPORT_ISSUE_URL = "https://github.com/ex90rts/remarking/issues/new";
-const RECORDS_PAGE_SIZE = 20;
 const TOAST_DURATION_MS = 1500;
-const PROMPT_REQUIRED_VARIABLES = ["{{task}}", "{{selection}}", "{{context}}"] as const;
+const PROMPT_REQUIRED_VARIABLES = [
+  "{{task}}",
+  "{{selection}}",
+  "{{context}}",
+] as const;
 
 const twoLineClampSx = {
   display: "-webkit-box",
   WebkitLineClamp: 2,
   WebkitBoxOrient: "vertical",
   overflow: "hidden",
-  overflowWrap: "anywhere"
+  overflowWrap: "anywhere",
 };
 
 const markdownBodySx = {
   "& p": { my: 1 },
   "& ul": { my: 1, pl: 3 },
-  "& blockquote": { borderLeft: "3px solid #cbd5e1", m: 0, pl: 2, color: "text.secondary" },
+  "& blockquote": {
+    borderLeft: "3px solid #cbd5e1",
+    m: 0,
+    pl: 2,
+    color: "text.secondary",
+  },
   "& pre": { p: 1.5, bgcolor: "#f1f5f9", borderRadius: 1, overflow: "auto" },
-  "& code": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", bgcolor: "#f1f5f9", px: 0.5, borderRadius: 0.5 },
-  "& table": { width: "100%", borderCollapse: "collapse", my: 1.25, display: "block", overflowX: "auto" },
-  "& th, & td": { border: "1px solid #cbd5e1", px: 1, py: 0.75, textAlign: "left", verticalAlign: "top" },
-  "& th": { bgcolor: "#f8fafc", fontWeight: 700 }
+  "& code": {
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+    bgcolor: "#f1f5f9",
+    px: 0.5,
+    borderRadius: 0.5,
+  },
+  "& table": {
+    width: "100%",
+    borderCollapse: "collapse",
+    my: 1.25,
+    display: "block",
+    overflowX: "auto",
+  },
+  "& th, & td": {
+    border: "1px solid #cbd5e1",
+    px: 1,
+    py: 0.75,
+    textAlign: "left",
+    verticalAlign: "top",
+  },
+  "& th": { bgcolor: "#f8fafc", fontWeight: 700 },
 };
 
 export function App() {
-  const [tab, setTab] = useState<TabKey>("highlights");
+  const [tab, setTab] = useState<TabKey>(() => getInitialTab());
   const [data, setData] = useState<ListAllDataResult | undefined>();
   const [toast, setToast] = useState<ToastState | undefined>();
   const [includeSensitive, setIncludeSensitive] = useState(false);
@@ -117,7 +174,9 @@ export function App() {
   }, []);
 
   async function reload() {
-    const result = await sendMessage<ListAllDataResult>({ type: "LIST_ALL_DATA" });
+    const result = await sendMessage<ListAllDataResult>({
+      type: "LIST_ALL_DATA",
+    });
     setData(result);
   }
 
@@ -125,7 +184,10 @@ export function App() {
     setToast({ id: Date.now(), message, severity });
   }
 
-  async function runAction(action: () => Promise<void> | void, successMessage?: string) {
+  async function runAction(
+    action: () => Promise<void> | void,
+    successMessage?: string,
+  ) {
     try {
       await action();
       if (successMessage) notify(successMessage, "success");
@@ -134,27 +196,65 @@ export function App() {
     }
   }
 
+  function switchTab(nextTab: TabKey) {
+    setTab(nextTab);
+    window.history.replaceState(null, "", `#${nextTab}`);
+  }
+
   const counts = useMemo(
     () => ({
       highlights: data?.highlights.length ?? 0,
-      vocabulary: data?.vocabulary.length ?? 0
+      vocabulary: data?.vocabulary.length ?? 0,
     }),
-    [data]
+    [data],
   );
+  const recordsPageSize =
+    data?.settings.ui.recordsPageSize ?? DEFAULT_RECORDS_PAGE_SIZE;
 
   return (
     <Box minHeight="100vh">
       <AppBar position="sticky" elevation={0} color="inherit">
         <Toolbar sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
           <Highlighter size={22} />
-          <Typography variant="h6" sx={{ ml: 1, flexGrow: 1 }}>
-            {t.common.appName}
+          <Typography
+            variant="h6"
+            sx={{
+              ml: 1,
+              flexGrow: 1,
+              fontWeight: 800,
+            }}
+          >
+            <Box
+              component="span"
+              sx={{
+                display: "inline-block",
+                background:
+                  "linear-gradient(100deg, #00319d 0%, #0042d3 24%, #d946ef 56%, #06b6d4 100%)",
+                WebkitBackgroundClip: "text",
+                backgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
+            >
+              {t.common.appName}
+            </Box>
           </Typography>
           <Stack direction="row" spacing={1.5}>
-            <Button startIcon={<Github size={16} />} href={REMARKING_GITHUB_URL} target="_blank" rel="noreferrer">
+            <Button
+              startIcon={<Github size={16} />}
+              href={REMARKING_GITHUB_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ textTransform: "none" }}
+            >
               GitHub
             </Button>
-            <Button startIcon={<Bug size={16} />} href={REPORT_ISSUE_URL} target="_blank" rel="noreferrer">
+            <Button
+              startIcon={<Bug size={16} />}
+              href={REPORT_ISSUE_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ textTransform: "none" }}
+            >
               Report an issue
             </Button>
           </Stack>
@@ -162,16 +262,59 @@ export function App() {
       </AppBar>
 
       <Container maxWidth="lg" sx={{ py: 3 }}>
-        <Paper variant="outlined">
-          <Tabs value={tab} onChange={(_, value: TabKey) => setTab(value)} sx={{ px: 2, borderBottom: 1, borderColor: "divider" }}>
-            <Tab value="highlights" icon={<Highlighter size={16} />} iconPosition="start" label={`${t.options.tabs.highlights} (${counts.highlights})`} />
-            <Tab value="vocabulary" icon={<Languages size={16} />} iconPosition="start" label={`${t.options.tabs.vocabulary} (${counts.vocabulary})`} />
-            <Tab value="settings" icon={<Settings size={16} />} iconPosition="start" label={t.options.tabs.settings} />
+        <Paper variant="outlined" style={{ minWidth: 1000 }}>
+          <Tabs
+            value={tab}
+            onChange={(_, value: TabKey) => switchTab(value)}
+            sx={{ px: 2, borderBottom: 1, borderColor: "divider" }}
+          >
+            <Tab
+              value="highlights"
+              icon={<Highlighter size={16} />}
+              iconPosition="start"
+              label={`${t.options.tabs.highlights} (${counts.highlights})`}
+            />
+            <Tab
+              value="vocabulary"
+              icon={<Languages size={16} />}
+              iconPosition="start"
+              label={`${t.options.tabs.vocabulary} (${counts.vocabulary})`}
+            />
+            <Tab
+              value="settings"
+              icon={<Settings size={16} />}
+              iconPosition="start"
+              label={t.options.tabs.settings}
+            />
+            <Tab
+              value="about"
+              icon={<Info size={16} />}
+              iconPosition="start"
+              label={t.options.tabs.about}
+            />
           </Tabs>
 
           <Box p={2}>
-            {tab === "highlights" && <HighlightsTab highlights={data?.highlights ?? []} onChange={reload} runAction={runAction} notify={notify} t={t} />}
-            {tab === "vocabulary" && <VocabularyTab vocabulary={data?.vocabulary ?? []} onChange={reload} runAction={runAction} notify={notify} t={t} />}
+            {tab === "highlights" && (
+              <HighlightsTab
+                highlights={data?.highlights ?? []}
+                recordsPageSize={recordsPageSize}
+                onChange={reload}
+                runAction={runAction}
+                notify={notify}
+                t={t}
+              />
+            )}
+            {tab === "vocabulary" && (
+              <VocabularyTab
+                vocabulary={data?.vocabulary ?? []}
+                recordsPageSize={recordsPageSize}
+                onChange={reload}
+                runAction={runAction}
+                notify={notify}
+                t={t}
+              />
+            )}
             {tab === "settings" && data && (
               <SettingsTab
                 data={data}
@@ -183,6 +326,7 @@ export function App() {
                 t={t}
               />
             )}
+            {tab === "about" && <AboutTab t={t} />}
           </Box>
         </Paper>
       </Container>
@@ -191,10 +335,28 @@ export function App() {
   );
 }
 
-function Toast({ toast, onClose }: { toast: ToastState | undefined; onClose: () => void }) {
+function getInitialTab(): TabKey {
+  const hash = window.location.hash.replace(/^#/, "");
+  return isTabKey(hash) ? hash : "highlights";
+}
+
+function isTabKey(value: string): value is TabKey {
+  return ["highlights", "vocabulary", "settings", "about"].includes(value);
+}
+
+function Toast({
+  toast,
+  onClose,
+}: {
+  toast: ToastState | undefined;
+  onClose: () => void;
+}) {
   useEffect(() => {
     if (!toast) return undefined;
-    const timer = window.setTimeout(onClose, toast.durationMs ?? TOAST_DURATION_MS);
+    const timer = window.setTimeout(
+      onClose,
+      toast.durationMs ?? TOAST_DURATION_MS,
+    );
     return () => window.clearTimeout(timer);
   }, [toast, onClose]);
 
@@ -226,7 +388,7 @@ function Toast({ toast, onClose }: { toast: ToastState | undefined; onClose: () 
         color: "text.primary",
         fontSize: 14,
         lineHeight: 1.45,
-        overflowWrap: "anywhere"
+        overflowWrap: "anywhere",
       }}
     >
       <Box
@@ -236,10 +398,14 @@ function Toast({ toast, onClose }: { toast: ToastState | undefined; onClose: () 
           alignItems: "center",
           justifyContent: "center",
           flexShrink: 0,
-          color: isError ? "#d92d20" : "#079455"
+          color: isError ? "#d92d20" : "#079455",
         }}
       >
-        {isError ? <X size={22} strokeWidth={2.6} /> : <Check size={22} strokeWidth={2.6} />}
+        {isError ? (
+          <X size={22} strokeWidth={2.6} />
+        ) : (
+          <Check size={22} strokeWidth={2.6} />
+        )}
       </Box>
       <Box component="span">{toast.message}</Box>
     </Box>
@@ -257,9 +423,9 @@ function SourceLink({ href, label }: { href: string; label: string }) {
       title={label}
       sx={{
         ...twoLineClampSx,
-        color: "primary.main",
+        color: "#00319d",
         textDecoration: "none",
-        "&:hover": { textDecoration: "underline" }
+        "&:hover": { textDecoration: "underline" },
       }}
     >
       {label}
@@ -267,7 +433,13 @@ function SourceLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-function TableActionBar({ filters, actions }: { filters: ReactNode; actions: ReactNode }) {
+function TableActionBar({
+  filters,
+  actions,
+}: {
+  filters: ReactNode;
+  actions: ReactNode;
+}) {
   return (
     <Stack spacing={1.5}>
       <Stack
@@ -279,7 +451,11 @@ function TableActionBar({ filters, actions }: { filters: ReactNode; actions: Rea
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
           {filters}
         </Stack>
-        <Stack direction="row" spacing={1} justifyContent={{ xs: "flex-start", md: "flex-end" }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          justifyContent={{ xs: "flex-start", md: "flex-end" }}
+        >
           {actions}
         </Stack>
       </Stack>
@@ -300,12 +476,14 @@ function downloadFile(filename: string, content: string, type: string) {
 
 function HighlightsTab({
   highlights,
+  recordsPageSize,
   onChange,
   runAction,
   notify,
-  t
+  t,
 }: {
   highlights: HighlightRecord[];
+  recordsPageSize: RecordsPageSize;
   onChange: () => Promise<void>;
   runAction: RunAction;
   notify: Notify;
@@ -318,14 +496,23 @@ function HighlightsTab({
     () =>
       highlights.filter((highlight) => {
         const matchesText = includesFuzzy(highlight.selectedText, textFilter);
-        const matchesSource = includesFuzzy(`${highlight.sourceTitle || ""} ${highlight.sourceUrl}`, sourceFilter);
+        const matchesSource = includesFuzzy(
+          `${highlight.sourceTitle || ""} ${highlight.sourceUrl}`,
+          sourceFilter,
+        );
         const matchesColor = !colorFilter || highlight.color === colorFilter;
         return matchesText && matchesSource && matchesColor;
       }),
-    [colorFilter, highlights, sourceFilter, textFilter]
+    [colorFilter, highlights, sourceFilter, textFilter],
   );
-  const sortedHighlights = useMemo(() => sortByCreatedAtDesc(filteredHighlights), [filteredHighlights]);
-  const { page, pageItems, setPage } = usePagedItems(sortedHighlights);
+  const sortedHighlights = useMemo(
+    () => sortByCreatedAtDesc(filteredHighlights),
+    [filteredHighlights],
+  );
+  const { page, pageItems, setPage } = usePagedItems(
+    sortedHighlights,
+    recordsPageSize,
+  );
   const hasFilters = Boolean(textFilter || sourceFilter || colorFilter);
 
   function resetFilters() {
@@ -339,24 +526,43 @@ function HighlightsTab({
       <TableActionBar
         filters={
           <>
-            <TextField size="small" label={t.options.columns.highlightedText} value={textFilter} onChange={(event) => setTextFilter(event.target.value)} />
-            <TextField size="small" label={t.options.columns.source} value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} />
+            <TextField
+              size="small"
+              label={t.options.columns.highlightedText}
+              value={textFilter}
+              onChange={(event) => setTextFilter(event.target.value)}
+            />
+            <TextField
+              size="small"
+              label={t.options.columns.source}
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value)}
+            />
             <TextField
               select
               size="small"
               label={t.options.columns.color}
               value={colorFilter}
-              onChange={(event) => setColorFilter(event.target.value as HighlightColor | "")}
+              onChange={(event) =>
+                setColorFilter(event.target.value as HighlightColor | "")
+              }
               sx={{ minWidth: 140 }}
             >
               <MenuItem value="">{t.options.filters.allColors}</MenuItem>
-              {(Object.keys(HIGHLIGHT_COLORS) as HighlightColor[]).map((color) => (
-                <MenuItem key={color} value={color}>
-                  {color}
-                </MenuItem>
-              ))}
+              {(Object.keys(HIGHLIGHT_COLORS) as HighlightColor[]).map(
+                (color) => (
+                  <MenuItem key={color} value={color}>
+                    {color}
+                  </MenuItem>
+                ),
+              )}
             </TextField>
-            <Button variant="outlined" startIcon={<RotateCcw size={16} />} disabled={!hasFilters} onClick={resetFilters}>
+            <Button
+              variant="outlined"
+              startIcon={<RotateCcw size={16} />}
+              disabled={!hasFilters}
+              onClick={resetFilters}
+            >
               {t.options.filters.reset}
             </Button>
           </>
@@ -368,14 +574,25 @@ function HighlightsTab({
               startIcon={<FileText size={16} />}
               onClick={() =>
                 void runAction(
-                  () => downloadFile("remarker-highlights.md", createHighlightsMarkdownExport(sortedHighlights), "text/markdown"),
-                  t.options.notices.markdownExported
+                  () =>
+                    downloadFile(
+                      "remarker-highlights.md",
+                      createHighlightsMarkdownExport(sortedHighlights),
+                      "text/markdown",
+                    ),
+                  t.options.notices.markdownExported,
                 )
               }
             >
               {t.options.actions.export}
             </Button>
-            <Button variant="outlined" startIcon={<RefreshCcw size={16} />} onClick={() => void runAction(onChange, t.options.notices.dataRefreshed)}>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshCcw size={16} />}
+              onClick={() =>
+                void runAction(onChange, t.options.notices.dataRefreshed)
+              }
+            >
               {t.common.refresh}
             </Button>
           </>
@@ -398,15 +615,26 @@ function HighlightsTab({
                 <Typography component="div" variant="body2">
                   {highlight.selectedText}
                 </Typography>
-                <Typography component="div" variant="caption" color="text.secondary">
+                <Typography
+                  component="div"
+                  variant="caption"
+                  color="text.secondary"
+                >
                   {t.common.created} {formatCreatedAt(highlight.createdAt)}
                 </Typography>
               </TableCell>
               <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                <SourceLink href={highlight.sourceUrl} label={highlight.sourceTitle || highlight.sourceUrl} />
+                <SourceLink
+                  href={highlight.sourceUrl}
+                  label={highlight.sourceTitle || highlight.sourceUrl}
+                />
               </TableCell>
               <TableCell>
-                <Chip size="small" label={highlight.status} title={getHighlightStatusDescription(highlight.status, t)} />
+                <Chip
+                  size="small"
+                  label={highlight.status}
+                  title={getHighlightStatusDescription(highlight.status, t)}
+                />
               </TableCell>
               <TableCell>
                 <Box
@@ -419,18 +647,26 @@ function HighlightsTab({
                     borderRadius: "6px",
                     border: "1px solid rgba(15, 23, 42, 0.16)",
                     bgcolor: HIGHLIGHT_COLORS[highlight.color],
-                    verticalAlign: "middle"
+                    verticalAlign: "middle",
                   }}
                 />
               </TableCell>
               <TableCell align="center">
-                <CopyIconButton label={t.options.actions.copyHighlightedText} text={highlight.selectedText} notify={notify} t={t} />
+                <CopyIconButton
+                  label={t.options.actions.copyHighlightedText}
+                  text={highlight.selectedText}
+                  notify={notify}
+                  t={t}
+                />
                 <ConfirmDeleteIconButton
                   label={t.options.actions.deleteHighlight}
                   message={t.options.confirmations.deleteHighlight}
                   onConfirm={async () => {
                     await runAction(async () => {
-                      await sendMessage({ type: "DELETE_HIGHLIGHT", id: highlight.id });
+                      await sendMessage({
+                        type: "DELETE_HIGHLIGHT",
+                        id: highlight.id,
+                      });
                       await onChange();
                     }, t.options.notices.highlightDeleted);
                   }}
@@ -442,7 +678,13 @@ function HighlightsTab({
         </TableBody>
         <TableFooter>
           <TableRow>
-            <RecordsTablePagination count={sortedHighlights.length} page={page} onPageChange={setPage} colSpan={5} />
+            <RecordsTablePagination
+              count={sortedHighlights.length}
+              page={page}
+              recordsPageSize={recordsPageSize}
+              onPageChange={setPage}
+              colSpan={5}
+            />
           </TableRow>
         </TableFooter>
       </Table>
@@ -452,12 +694,14 @@ function HighlightsTab({
 
 function VocabularyTab({
   vocabulary,
+  recordsPageSize,
   onChange,
   runAction,
   notify,
-  t
+  t,
 }: {
   vocabulary: VocabularyRecord[];
+  recordsPageSize: RecordsPageSize;
   onChange: () => Promise<void>;
   runAction: RunAction;
   notify: Notify;
@@ -470,14 +714,26 @@ function VocabularyTab({
     () =>
       vocabulary.filter((item) => {
         const matchesWord = includesFuzzy(item.word, wordFilter);
-        const matchesContext = includesFuzzy(item.contextSentence, contextFilter);
-        const matchesSource = includesFuzzy(`${item.sourceTitle || ""} ${item.sourceUrl}`, sourceFilter);
+        const matchesContext = includesFuzzy(
+          item.contextSentence,
+          contextFilter,
+        );
+        const matchesSource = includesFuzzy(
+          `${item.sourceTitle || ""} ${item.sourceUrl}`,
+          sourceFilter,
+        );
         return matchesWord && matchesContext && matchesSource;
       }),
-    [contextFilter, sourceFilter, vocabulary, wordFilter]
+    [contextFilter, sourceFilter, vocabulary, wordFilter],
   );
-  const sortedVocabulary = useMemo(() => sortByCreatedAtDesc(filteredVocabulary), [filteredVocabulary]);
-  const { page, pageItems, setPage } = usePagedItems(sortedVocabulary);
+  const sortedVocabulary = useMemo(
+    () => sortByCreatedAtDesc(filteredVocabulary),
+    [filteredVocabulary],
+  );
+  const { page, pageItems, setPage } = usePagedItems(
+    sortedVocabulary,
+    recordsPageSize,
+  );
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const hasFilters = Boolean(wordFilter || contextFilter || sourceFilter);
 
@@ -492,10 +748,30 @@ function VocabularyTab({
       <TableActionBar
         filters={
           <>
-            <TextField size="small" label={t.options.columns.word} value={wordFilter} onChange={(event) => setWordFilter(event.target.value)} />
-            <TextField size="small" label={t.options.columns.context} value={contextFilter} onChange={(event) => setContextFilter(event.target.value)} />
-            <TextField size="small" label={t.options.columns.source} value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)} />
-            <Button variant="outlined" startIcon={<RotateCcw size={16} />} disabled={!hasFilters} onClick={resetFilters}>
+            <TextField
+              size="small"
+              label={t.options.columns.word}
+              value={wordFilter}
+              onChange={(event) => setWordFilter(event.target.value)}
+            />
+            <TextField
+              size="small"
+              label={t.options.columns.context}
+              value={contextFilter}
+              onChange={(event) => setContextFilter(event.target.value)}
+            />
+            <TextField
+              size="small"
+              label={t.options.columns.source}
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value)}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<RotateCcw size={16} />}
+              disabled={!hasFilters}
+              onClick={resetFilters}
+            >
               {t.options.filters.reset}
             </Button>
           </>
@@ -507,14 +783,25 @@ function VocabularyTab({
               startIcon={<FileText size={16} />}
               onClick={() =>
                 void runAction(
-                  () => downloadFile("remarker-new-words.md", createVocabularyMarkdownExport(sortedVocabulary), "text/markdown"),
-                  t.options.notices.markdownExported
+                  () =>
+                    downloadFile(
+                      "remarker-new-words.md",
+                      createVocabularyMarkdownExport(sortedVocabulary),
+                      "text/markdown",
+                    ),
+                  t.options.notices.markdownExported,
                 )
               }
             >
               {t.options.actions.export}
             </Button>
-            <Button variant="outlined" startIcon={<RefreshCcw size={16} />} onClick={() => void runAction(onChange, t.options.notices.dataRefreshed)}>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshCcw size={16} />}
+              onClick={() =>
+                void runAction(onChange, t.options.notices.dataRefreshed)
+              }
+            >
               {t.common.refresh}
             </Button>
           </>
@@ -546,35 +833,68 @@ function VocabularyTab({
                 <TableCell>
                   <IconButton
                     size="small"
-                    aria-label={expandedRows[item.id] ? t.options.actions.collapseTranslation : t.options.actions.expandTranslation}
-                    onClick={() => setExpandedRows((rows) => ({ ...rows, [item.id]: !rows[item.id] }))}
+                    aria-label={
+                      expandedRows[item.id]
+                        ? t.options.actions.collapseTranslation
+                        : t.options.actions.expandTranslation
+                    }
+                    onClick={() =>
+                      setExpandedRows((rows) => ({
+                        ...rows,
+                        [item.id]: !rows[item.id],
+                      }))
+                    }
                   >
-                    {expandedRows[item.id] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                    {expandedRows[item.id] ? (
+                      <ChevronDown size={16} />
+                    ) : (
+                      <ChevronRight size={16} />
+                    )}
                   </IconButton>
                 </TableCell>
                 <TableCell sx={{ width: 260 }}>
                   <Typography component="div" variant="body2" fontWeight={600}>
                     {item.word}
                   </Typography>
-                  <Typography component="div" variant="caption" color="text.secondary" sx={{ whiteSpace: "nowrap" }}>
+                  <Typography
+                    component="div"
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ whiteSpace: "nowrap" }}
+                  >
                     {t.common.created} {formatCreatedAt(item.createdAt)}
                   </Typography>
                 </TableCell>
                 <TableCell>
                   <IconButton
-                    aria-label={interpolate(t.options.actions.speakWord, { word: item.word })}
-                    onClick={() => void runAction(() => speakWord(item.word), t.options.notices.pronunciationStarted)}
+                    aria-label={interpolate(t.options.actions.speakWord, {
+                      word: item.word,
+                    })}
+                    onClick={() =>
+                      void runAction(
+                        () => speakWord(item.word),
+                        t.options.notices.pronunciationStarted,
+                      )
+                    }
                   >
                     <Volume2 size={16} />
                   </IconButton>
                 </TableCell>
                 <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                  <Typography component="div" variant="body2" title={item.contextSentence} sx={twoLineClampSx}>
+                  <Typography
+                    component="div"
+                    variant="body2"
+                    title={item.contextSentence}
+                    sx={twoLineClampSx}
+                  >
                     {item.contextSentence}
                   </Typography>
                 </TableCell>
                 <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                  <SourceLink href={item.sourceUrl} label={item.sourceTitle || item.sourceUrl} />
+                  <SourceLink
+                    href={item.sourceUrl}
+                    label={item.sourceTitle || item.sourceUrl}
+                  />
                 </TableCell>
                 <TableCell align="center">
                   <ConfirmDeleteIconButton
@@ -582,7 +902,10 @@ function VocabularyTab({
                     message={t.options.confirmations.deleteVocabularyItem}
                     onConfirm={async () => {
                       await runAction(async () => {
-                        await sendMessage({ type: "DELETE_VOCABULARY", id: item.id });
+                        await sendMessage({
+                          type: "DELETE_VOCABULARY",
+                          id: item.id,
+                        });
                         await onChange();
                       }, t.options.notices.vocabularyDeleted);
                     }}
@@ -591,33 +914,81 @@ function VocabularyTab({
                 </TableCell>
               </TableRow>
               <TableRow>
-                <TableCell colSpan={6} sx={{ py: 0, borderBottom: expandedRows[item.id] ? undefined : 0 }}>
-                  <Collapse in={Boolean(expandedRows[item.id])} timeout="auto" unmountOnExit>
+                <TableCell
+                  colSpan={6}
+                  sx={{
+                    py: 0,
+                    borderBottom: expandedRows[item.id] ? undefined : 0,
+                  }}
+                >
+                  <Collapse
+                    in={Boolean(expandedRows[item.id])}
+                    timeout="auto"
+                    unmountOnExit
+                  >
                     <Box sx={{ px: 2, py: 1.5, ml: 5 }}>
-                      <Box sx={{ bgcolor: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 1, p: 1.5, mb: 1.5 }}>
-                        <Typography variant="caption" color="text.secondary" component="div" sx={{ mb: 0.5 }}>
+                      <Box
+                        sx={{
+                          bgcolor: "#f8fafc",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 1,
+                          p: 1.5,
+                          mb: 1.5,
+                        }}
+                      >
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          component="div"
+                          sx={{ mb: 0.5 }}
+                        >
                           {t.options.columns.context}
                         </Typography>
-                        <Typography variant="body2" sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-                          {renderHighlightedContext(item.contextSentence || t.common.empty, item.word)}
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            whiteSpace: "pre-wrap",
+                            overflowWrap: "anywhere",
+                          }}
+                        >
+                          {renderHighlightedContext(
+                            item.contextSentence || t.common.empty,
+                            item.word,
+                          )}
                         </Typography>
                       </Box>
-                      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 0.5 }}>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        sx={{ mb: 0.5 }}
+                      >
                         <Typography variant="caption" color="text.secondary">
                           {t.content.explanation}
                         </Typography>
-                        <CopyIconButton label={t.options.actions.copyExplanation} text={item.translation || ""} notify={notify} t={t} />
+                        <CopyIconButton
+                          label={t.options.actions.copyExplanation}
+                          text={item.translation || ""}
+                          notify={notify}
+                          t={t}
+                        />
                       </Stack>
                       <Box
                         className="markdown-body"
                         sx={{
-                          color: item.translation ? "text.primary" : "text.secondary",
+                          color: item.translation
+                            ? "text.primary"
+                            : "text.secondary",
                           fontSize: 14,
                           lineHeight: 1.65,
                           overflowWrap: "anywhere",
-                          ...markdownBodySx
+                          ...markdownBodySx,
                         }}
-                        dangerouslySetInnerHTML={{ __html: markdownToSafeHtml(item.translation || t.common.empty) }}
+                        dangerouslySetInnerHTML={{
+                          __html: markdownToSafeHtml(
+                            item.translation || t.common.empty,
+                          ),
+                        }}
                       />
                     </Box>
                   </Collapse>
@@ -628,7 +999,13 @@ function VocabularyTab({
         </TableBody>
         <TableFooter>
           <TableRow>
-            <RecordsTablePagination count={sortedVocabulary.length} page={page} onPageChange={setPage} colSpan={6} />
+            <RecordsTablePagination
+              count={sortedVocabulary.length}
+              page={page}
+              recordsPageSize={recordsPageSize}
+              onPageChange={setPage}
+              colSpan={6}
+            />
           </TableRow>
         </TableFooter>
       </Table>
@@ -636,14 +1013,14 @@ function VocabularyTab({
   );
 }
 
-function usePagedItems<T>(items: T[]) {
+function usePagedItems<T>(items: T[], recordsPageSize: RecordsPageSize) {
   const [page, setPage] = useState(0);
-  const pageCount = Math.max(1, Math.ceil(items.length / RECORDS_PAGE_SIZE));
+  const pageCount = Math.max(1, Math.ceil(items.length / recordsPageSize));
   const safePage = Math.min(page, pageCount - 1);
 
   useEffect(() => {
     setPage(0);
-  }, [items]);
+  }, [items, recordsPageSize]);
 
   useEffect(() => {
     if (page !== safePage) setPage(safePage);
@@ -651,27 +1028,32 @@ function usePagedItems<T>(items: T[]) {
 
   return {
     page: safePage,
-    pageItems: items.slice(safePage * RECORDS_PAGE_SIZE, safePage * RECORDS_PAGE_SIZE + RECORDS_PAGE_SIZE),
-    setPage
+    pageItems: items.slice(
+      safePage * recordsPageSize,
+      safePage * recordsPageSize + recordsPageSize,
+    ),
+    setPage,
   };
 }
 
 function RecordsTablePagination({
   count,
   page,
+  recordsPageSize,
   onPageChange,
-  colSpan
+  colSpan,
 }: {
   count: number;
   page: number;
+  recordsPageSize: RecordsPageSize;
   onPageChange: (page: number) => void;
   colSpan: number;
 }) {
   return (
     <TablePagination
-      rowsPerPageOptions={[RECORDS_PAGE_SIZE]}
+      rowsPerPageOptions={[recordsPageSize]}
       count={count}
-      rowsPerPage={RECORDS_PAGE_SIZE}
+      rowsPerPage={recordsPageSize}
       page={page}
       onPageChange={(_, nextPage) => onPageChange(nextPage)}
       colSpan={colSpan}
@@ -679,7 +1061,72 @@ function RecordsTablePagination({
   );
 }
 
-function CopyIconButton({ label, text, notify, t }: { label: string; text: string; notify: Notify; t: Messages }) {
+function AboutTab({ t }: { t: Messages }) {
+  const releaseFeatures = [
+    t.options.about.releases.feature1,
+    t.options.about.releases.feature2,
+    t.options.about.releases.feature3,
+    t.options.about.releases.feature4,
+    t.options.about.releases.feature5,
+  ];
+
+  return (
+    <Stack spacing={3} maxWidth={860}>
+      <Box>
+        <Typography variant="h6" gutterBottom>
+          {t.options.about.plan.title}
+        </Typography>
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ maxWidth: 720 }}
+        >
+          {t.options.about.plan.body}
+        </Typography>
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <Typography variant="h6" gutterBottom>
+          {t.options.about.releases.title}
+        </Typography>
+        <Stack spacing={1}>
+          <Typography variant="subtitle1" fontWeight={700}>
+            {t.options.about.releases.version}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t.options.about.releases.summary}
+          </Typography>
+          <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
+            {releaseFeatures.map((feature) => (
+              <Typography
+                component="li"
+                variant="body2"
+                key={feature}
+                sx={{ mb: 0.75 }}
+              >
+                {feature}
+              </Typography>
+            ))}
+          </Box>
+        </Stack>
+      </Box>
+    </Stack>
+  );
+}
+
+function CopyIconButton({
+  label,
+  text,
+  notify,
+  t,
+}: {
+  label: string;
+  text: string;
+  notify: Notify;
+  t: Messages;
+}) {
   const [isCopied, setIsCopied] = useState(false);
   const timerRef = useRef<number | undefined>(undefined);
 
@@ -687,7 +1134,7 @@ function CopyIconButton({ label, text, notify, t }: { label: string; text: strin
     () => () => {
       if (timerRef.current !== undefined) window.clearTimeout(timerRef.current);
     },
-    []
+    [],
   );
 
   async function copyText() {
@@ -715,7 +1162,7 @@ function CopyIconButton({ label, text, notify, t }: { label: string; text: strin
           ? {
               color: "#067647",
               bgcolor: "#ecfdf3",
-              "&:hover": { bgcolor: "#d1fadf" }
+              "&:hover": { bgcolor: "#d1fadf" },
             }
           : undefined
       }
@@ -729,7 +1176,7 @@ function ConfirmDeleteIconButton({
   label,
   message,
   onConfirm,
-  t
+  t,
 }: {
   label: string;
   message: string;
@@ -751,9 +1198,11 @@ function ConfirmPopover({
   children,
   message,
   onConfirm,
-  t
+  t,
 }: {
-  children: (props: { open: (event: MouseEvent<HTMLElement>) => void }) => ReactNode;
+  children: (props: {
+    open: (event: MouseEvent<HTMLElement>) => void;
+  }) => ReactNode;
   message: string;
   onConfirm: () => Promise<void> | void;
   t: Messages;
@@ -812,7 +1261,7 @@ function SettingsTab({
   runAction,
   notify,
   onChange,
-  t
+  t,
 }: {
   data: ListAllDataResult;
   includeSensitive: boolean;
@@ -829,18 +1278,29 @@ function SettingsTab({
 
   useEffect(() => setSettings(data.settings), [data.settings]);
   useEffect(() => {
-    chrome.storage.local.get(["globalEnabled", "disabledSites"]).then((cache) => {
-      setGlobalEnabled(cache.globalEnabled ?? true);
-      setDisabledSitesText(Array.isArray(cache.disabledSites) ? cache.disabledSites.join("\n") : "");
-    });
+    chrome.storage.local
+      .get(["globalEnabled", "disabledSites"])
+      .then((cache) => {
+        setGlobalEnabled(cache.globalEnabled ?? true);
+        setDisabledSitesText(
+          Array.isArray(cache.disabledSites)
+            ? cache.disabledSites.join("\n")
+            : "",
+        );
+      });
   }, []);
 
   async function saveSettings() {
-    const missingVariables = getMissingPromptVariables(settings.llm.promptTemplate);
+    const missingVariables = getMissingPromptVariables(
+      settings.llm.promptTemplate,
+    );
     if (missingVariables.length > 0) {
-      const message = interpolate(t.options.errors.promptTemplateMissingVariables, {
-        variables: missingVariables.join(", ")
-      });
+      const message = interpolate(
+        t.options.errors.promptTemplateMissingVariables,
+        {
+          variables: missingVariables.join(", "),
+        },
+      );
       setPromptTemplateError(message);
       notify(message, "error");
       return;
@@ -853,7 +1313,7 @@ function SettingsTab({
       disabledSites: disabledSitesText
         .split("\n")
         .map((site) => site.trim().toLowerCase())
-        .filter(Boolean)
+        .filter(Boolean),
     });
     await onChange();
     notify(t.options.notices.settingsSaved);
@@ -872,14 +1332,41 @@ function SettingsTab({
   }
 
   function updateLanguage(language: AppSettings["ui"]["language"]) {
-    const nextPromptTemplate = isDefaultPromptTemplate(settings.llm.promptTemplate)
-      ? getDefaultPromptTemplate(language)
-      : settings.llm.promptTemplate;
-
     setSettings({
       ...settings,
-      llm: { ...settings.llm, promptTemplate: nextPromptTemplate },
-      ui: { ...settings.ui, language }
+      ui: { ...settings.ui, language },
+    });
+  }
+
+  function updateLlmProvider(providerValue: string) {
+    const provider = normalizeLlmProvider(providerValue);
+    setSettings({
+      ...settings,
+      llm: {
+        ...settings.llm,
+        provider,
+      },
+    });
+  }
+
+  function updateActiveLlmProviderConfig(updates: Partial<LlmProviderConfig>) {
+    const provider = settings.llm.provider;
+    const currentConfig = normalizeLlmProviderConfig(
+      provider,
+      settings.llm.providers[provider],
+    );
+    setSettings({
+      ...settings,
+      llm: {
+        ...settings.llm,
+        providers: {
+          ...settings.llm.providers,
+          [provider]: normalizeLlmProviderConfig(provider, {
+            ...currentConfig,
+            ...updates,
+          }),
+        },
+      },
     });
   }
 
@@ -887,10 +1374,17 @@ function SettingsTab({
     setPromptTemplateError("");
     setSettings({
       ...settings,
-      llm: { ...settings.llm, promptTemplate: getDefaultPromptTemplate(settings.ui.language) }
+      llm: { ...settings.llm, promptTemplate: getDefaultPromptTemplate() },
     });
     notify(t.options.notices.promptRestored);
   }
+
+  const activeLlmProviderPreset = getLlmProviderPreset(settings.llm.provider);
+  const activeLlmProviderConfig = normalizeLlmProviderConfig(
+    settings.llm.provider,
+    settings.llm.providers[settings.llm.provider],
+  );
+  const isCustomLlmProvider = settings.llm.provider === "custom";
 
   return (
     <Stack spacing={3} maxWidth={760}>
@@ -911,39 +1405,145 @@ function SettingsTab({
         ))}
       </TextField>
 
-      <Typography variant="h6">{t.options.settings.llm}</Typography>
-      <TextField label={t.options.settings.baseUrl} value={settings.llm.baseUrl} onChange={(event) => setSettings({ ...settings, llm: { ...settings.llm, baseUrl: event.target.value } })} />
-      <TextField label={t.options.settings.apiKey} type="password" value={settings.llm.apiKey} onChange={(event) => setSettings({ ...settings, llm: { ...settings.llm, apiKey: event.target.value } })} />
-      <TextField label={t.options.settings.model} value={settings.llm.model} onChange={(event) => setSettings({ ...settings, llm: { ...settings.llm, model: event.target.value } })} />
+      <Box>
+        <Typography variant="h6">{t.options.settings.llm}</Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+          {t.options.settings.llmCostNotice}
+        </Typography>
+      </Box>
+      <TextField
+        select
+        label={t.options.settings.provider}
+        value={settings.llm.provider}
+        helperText={t.options.settings.providerHelp}
+        onChange={(event) => updateLlmProvider(event.target.value)}
+        SelectProps={{
+          renderValue: (value) => {
+            const provider = normalizeLlmProvider(value);
+            const preset = getLlmProviderPreset(provider);
+            return provider === "custom"
+              ? t.options.settings.customProvider
+              : preset.label;
+          },
+        }}
+      >
+        {LLM_PROVIDER_PRESETS.map((preset) => (
+          <MenuItem
+            key={preset.value}
+            value={preset.value}
+            sx={{ alignItems: "flex-start", py: 1 }}
+          >
+            <Stack spacing={0.25}>
+              <Typography variant="body2">
+                {preset.value === "custom"
+                  ? t.options.settings.customProvider
+                  : preset.label}
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ lineHeight: 1.35, whiteSpace: "normal" }}
+              >
+                {t.options.settings.providerDescriptions[preset.value]}
+              </Typography>
+            </Stack>
+          </MenuItem>
+        ))}
+      </TextField>
+      <TextField
+        label={t.options.settings.baseUrl}
+        value={
+          isCustomLlmProvider
+            ? activeLlmProviderConfig.baseUrl
+            : activeLlmProviderPreset.baseUrl
+        }
+        disabled={!isCustomLlmProvider}
+        onChange={(event) =>
+          updateActiveLlmProviderConfig({ baseUrl: event.target.value })
+        }
+      />
+      <TextField
+        label={t.options.settings.apiKey}
+        type="password"
+        value={activeLlmProviderConfig.apiKey}
+        helperText={t.options.settings.apiKeyHelp}
+        onChange={(event) =>
+          updateActiveLlmProviderConfig({ apiKey: event.target.value })
+        }
+      />
+      <TextField
+        label={t.options.settings.model}
+        value={activeLlmProviderConfig.model}
+        helperText={t.options.settings.modelHelp}
+        onChange={(event) =>
+          updateActiveLlmProviderConfig({ model: event.target.value })
+        }
+      />
       <Stack direction="row" spacing={2}>
         <TextField
           label={t.options.settings.temperature}
           type="number"
           value={settings.llm.temperature}
-          onChange={(event) => setSettings({ ...settings, llm: { ...settings.llm, temperature: Number(event.target.value) } })}
+          onChange={(event) =>
+            setSettings({
+              ...settings,
+              llm: { ...settings.llm, temperature: Number(event.target.value) },
+            })
+          }
         />
         <TextField
           label={t.options.settings.timeoutMs}
           type="number"
           value={settings.llm.timeoutMs}
-          onChange={(event) => setSettings({ ...settings, llm: { ...settings.llm, timeoutMs: Number(event.target.value) } })}
+          onChange={(event) =>
+            setSettings({
+              ...settings,
+              llm: { ...settings.llm, timeoutMs: Number(event.target.value) },
+            })
+          }
         />
       </Stack>
-      <TextField
-        label={t.options.settings.promptTemplate}
-        value={settings.llm.promptTemplate}
-        onChange={(event) => {
-          setPromptTemplateError("");
-          setSettings({ ...settings, llm: { ...settings.llm, promptTemplate: event.target.value } });
-        }}
-        multiline
-        minRows={12}
-        error={Boolean(promptTemplateError)}
-        helperText={promptTemplateError || t.options.settings.promptTemplateHelp}
-      />
-      <Button variant="text" size="small" onClick={restoreDefaultPromptTemplate} sx={{ alignSelf: "flex-start", mt: -2 }}>
-        {t.options.actions.restoreDefault}
-      </Button>
+      <Stack spacing={0.75}>
+        <TextField
+          label={t.options.settings.promptTemplate}
+          value={settings.llm.promptTemplate}
+          onChange={(event) => {
+            setPromptTemplateError("");
+            setSettings({
+              ...settings,
+              llm: { ...settings.llm, promptTemplate: event.target.value },
+            });
+          }}
+          multiline
+          minRows={12}
+          error={Boolean(promptTemplateError)}
+        />
+        <Box
+          sx={{
+            alignItems: "flex-start",
+            display: "flex",
+            gap: 1,
+            justifyContent: "space-between",
+            pl: 1.75,
+          }}
+        >
+          <Typography
+            variant="caption"
+            color={promptTemplateError ? "error" : "text.secondary"}
+            sx={{ flex: 1, minWidth: 0, pt: 0.25 }}
+          >
+            {promptTemplateError || t.options.settings.promptTemplateHelp}
+          </Typography>
+          <Button
+            variant="text"
+            size="small"
+            onClick={restoreDefaultPromptTemplate}
+            sx={{ flexShrink: 0, minWidth: "auto", px: 0.75, py: 0 }}
+          >
+            {t.options.actions.restoreDefault}
+          </Button>
+        </Box>
+      </Stack>
 
       <Typography variant="h6">{t.options.settings.pronunciation}</Typography>
       <TextField
@@ -953,47 +1553,90 @@ function SettingsTab({
         onChange={(event) =>
           setSettings({
             ...settings,
-            pronunciation: { ...settings.pronunciation, merriamWebsterApiKey: event.target.value }
+            pronunciation: {
+              ...settings.pronunciation,
+              merriamWebsterApiKey: event.target.value,
+            },
           })
         }
       />
 
       <Typography variant="h6">{t.options.settings.preferences}</Typography>
-      <FormControlLabel
-        control={<Checkbox checked={globalEnabled} onChange={(event) => setGlobalEnabled(event.target.checked)} />}
-        label={t.options.settings.enableExtensionGlobally}
-      />
-      <FormControlLabel
-        control={
-          <Checkbox
-            checked={settings.ui.autoCloseLookupPanelOnCopy}
-            onChange={(event) =>
-              setSettings({
-                ...settings,
-                ui: { ...settings.ui, autoCloseLookupPanelOnCopy: event.target.checked }
-              })
+      <Stack spacing={1.75}>
+        <Stack spacing={0.25}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={globalEnabled}
+                onChange={(event) => setGlobalEnabled(event.target.checked)}
+              />
             }
+            label={t.options.settings.enableExtensionGlobally}
+            sx={{ mr: 0 }}
           />
-        }
-        label={t.options.settings.autoCloseLookupPanelOnCopy}
-      />
-      <TextField
-        select
-        label={t.options.settings.defaultHighlightColor}
-        value={settings.ui.defaultHighlightColor}
-        onChange={(event) =>
-          setSettings({
-            ...settings,
-            ui: { ...settings.ui, defaultHighlightColor: event.target.value as AppSettings["ui"]["defaultHighlightColor"] }
-          })
-        }
-      >
-        {["yellow", "green", "blue", "pink", "purple"].map((color) => (
-          <MenuItem key={color} value={color}>
-            {color}
-          </MenuItem>
-        ))}
-      </TextField>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={settings.ui.autoCloseLookupPanelOnCopy}
+                onChange={(event) =>
+                  setSettings({
+                    ...settings,
+                    ui: {
+                      ...settings.ui,
+                      autoCloseLookupPanelOnCopy: event.target.checked,
+                    },
+                  })
+                }
+              />
+            }
+            label={t.options.settings.autoCloseLookupPanelOnCopy}
+            sx={{ mr: 0 }}
+          />
+        </Stack>
+        <TextField
+          select
+          label={t.options.settings.recordsPageSize}
+          value={settings.ui.recordsPageSize}
+          onChange={(event) =>
+            setSettings({
+              ...settings,
+              ui: {
+                ...settings.ui,
+                recordsPageSize: normalizeRecordsPageSize(
+                  Number(event.target.value),
+                ),
+              },
+            })
+          }
+        >
+          {RECORDS_PAGE_SIZE_OPTIONS.map((pageSize) => (
+            <MenuItem key={pageSize} value={pageSize}>
+              {pageSize}
+            </MenuItem>
+          ))}
+        </TextField>
+        <TextField
+          select
+          label={t.options.settings.defaultHighlightColor}
+          value={settings.ui.defaultHighlightColor}
+          onChange={(event) =>
+            setSettings({
+              ...settings,
+              ui: {
+                ...settings.ui,
+                defaultHighlightColor: event.target
+                  .value as AppSettings["ui"]["defaultHighlightColor"],
+              },
+            })
+          }
+        >
+          {["yellow", "green", "blue", "pink", "purple"].map((color) => (
+            <MenuItem key={color} value={color}>
+              {color}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Stack>
       <TextField
         label={t.options.settings.disabledSites}
         value={disabledSitesText}
@@ -1008,23 +1651,32 @@ function SettingsTab({
 
       <Typography variant="h6">{t.options.settings.importExport}</Typography>
       <FormControlLabel
-        control={<Checkbox checked={includeSensitive} onChange={(event) => setIncludeSensitive(event.target.checked)} />}
+        control={
+          <Checkbox
+            checked={includeSensitive}
+            onChange={(event) => setIncludeSensitive(event.target.checked)}
+          />
+        }
         label={t.options.settings.includeSensitiveConfig}
       />
       <Stack direction="row" spacing={1} flexWrap="wrap">
         <Button
           startIcon={<Download size={16} />}
           onClick={() =>
-            void runAction(() => downloadFile(
-              "remarker-backup.json",
-              createBackupJson({
-                settings: data.settings,
-                highlights: data.highlights,
-                vocabulary: data.vocabulary,
-                includeSensitive
-              }),
-              "application/json"
-            ), t.options.notices.jsonExported)
+            void runAction(
+              () =>
+                downloadFile(
+                  "remarker-backup.json",
+                  createBackupJson({
+                    settings: data.settings,
+                    highlights: data.highlights,
+                    vocabulary: data.vocabulary,
+                    includeSensitive,
+                  }),
+                  "application/json",
+                ),
+              t.options.notices.jsonExported,
+            )
           }
         >
           {t.options.actions.exportJson}
@@ -1037,7 +1689,11 @@ function SettingsTab({
             accept="application/json"
             onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) void runAction(() => importJson(file), t.options.notices.jsonImported);
+              if (file)
+                void runAction(
+                  () => importJson(file),
+                  t.options.notices.jsonImported,
+                );
               event.currentTarget.value = "";
             }}
           />
@@ -1048,7 +1704,9 @@ function SettingsTab({
 }
 
 function sortByCreatedAtDesc<T extends { createdAt: string }>(items: T[]): T[] {
-  return [...items].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+  return [...items].sort(
+    (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt),
+  );
 }
 
 function formatCreatedAt(value: string): string {
@@ -1057,7 +1715,10 @@ function formatCreatedAt(value: string): string {
   return date.toLocaleString();
 }
 
-function getHighlightStatusDescription(status: HighlightStatus, t: Messages): string {
+function getHighlightStatusDescription(
+  status: HighlightStatus,
+  t: Messages,
+): string {
   switch (status) {
     case "active":
       return t.options.statusDescriptions.active;
@@ -1082,7 +1743,9 @@ function renderHighlightedContext(context: string, word: string): ReactNode {
 
   while (matchIndex !== -1) {
     const matchEnd = matchIndex + target.length;
-    const isBoundaryMatch = isWordBoundary(context[matchIndex - 1]) && isWordBoundary(context[matchEnd]);
+    const isBoundaryMatch =
+      isWordBoundary(context[matchIndex - 1]) &&
+      isWordBoundary(context[matchEnd]);
 
     if (isBoundaryMatch) {
       if (matchIndex > cursor) nodes.push(context.slice(cursor, matchIndex));
@@ -1094,16 +1757,19 @@ function renderHighlightedContext(context: string, word: string): ReactNode {
             bgcolor: "#ffe66d",
             borderRadius: "3px",
             px: "2px",
-            color: "inherit"
+            color: "inherit",
           }}
         >
           {context.slice(matchIndex, matchEnd)}
-        </Box>
+        </Box>,
       );
       cursor = matchEnd;
     }
 
-    matchIndex = lowerContext.indexOf(lowerTarget, Math.max(matchIndex + 1, matchEnd));
+    matchIndex = lowerContext.indexOf(
+      lowerTarget,
+      Math.max(matchIndex + 1, matchEnd),
+    );
   }
 
   if (nodes.length === 0) return context;
@@ -1122,7 +1788,9 @@ function includesFuzzy(value: string | undefined, query: string): boolean {
 }
 
 function getMissingPromptVariables(promptTemplate: string): string[] {
-  return PROMPT_REQUIRED_VARIABLES.filter((variable) => !promptTemplate.includes(variable));
+  return PROMPT_REQUIRED_VARIABLES.filter(
+    (variable) => !promptTemplate.includes(variable),
+  );
 }
 
 function formatError(error: unknown): string {
@@ -1132,7 +1800,7 @@ function formatError(error: unknown): string {
 async function speakWord(word: string): Promise<void> {
   const response = await sendMessage<PronunciationResult>({
     type: "GET_PRONUNCIATION",
-    word
+    word,
   });
 
   if (response.audioUrl) {
@@ -1145,8 +1813,11 @@ async function speakWord(word: string): Promise<void> {
 }
 
 function sendMessage<T>(message: RuntimeMessage): Promise<T> {
-  return chrome.runtime.sendMessage(message).then((response: { ok: boolean; result?: T; error?: string }) => {
-    if (!response?.ok) throw new Error(response?.error ?? "Extension request failed.");
-    return response.result as T;
-  });
+  return chrome.runtime
+    .sendMessage(message)
+    .then((response: { ok: boolean; result?: T; error?: string }) => {
+      if (!response?.ok)
+        throw new Error(response?.error ?? "Extension request failed.");
+      return response.result as T;
+    });
 }

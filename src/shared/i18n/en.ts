@@ -9,7 +9,7 @@ export const en = {
     cancel: "Cancel",
     delete: "Delete",
     empty: "Empty",
-    openSource: "Open source"
+    openSource: "Open source",
   },
   popup: {
     loading: "Loading",
@@ -17,7 +17,7 @@ export const en = {
     noSite: "No site",
     enableExtension: "Enable extension",
     enableCurrentSite: "Enable current site",
-    openManagementPage: "Open management page"
+    openManagementPage: "Open management page",
   },
   content: {
     copy: "Copy",
@@ -40,14 +40,15 @@ export const en = {
     copyExplanation: "Copy explanation",
     close: "Close",
     copied: "Copied",
-    savedHighlights: "Saved {{count}} highlight{{plural}}."
+    savedHighlights: "Saved {{count}} highlight{{plural}}.",
   },
   options: {
     tabs: {
       highlights: "Highlights",
       vocabulary: "Vocabulary",
       explanations: "Lookup Records",
-      settings: "Settings"
+      settings: "Settings",
+      about: "About",
     },
     columns: {
       highlightedText: "Highlighted Text",
@@ -57,11 +58,11 @@ export const en = {
       actions: "Actions",
       word: "Word",
       context: "Context",
-      audio: "Audio"
+      audio: "Audio",
     },
     filters: {
       allColors: "All colors",
-      reset: "Reset"
+      reset: "Reset",
     },
     actions: {
       copyHighlightedText: "Copy highlighted text",
@@ -78,36 +79,56 @@ export const en = {
       exportMarkdown: "Export Markdown",
       importJson: "Import JSON",
       saveSettings: "Save settings",
-      restoreDefault: "Restore default"
+      restoreDefault: "Restore default",
     },
     confirmations: {
       deleteHighlight: "Delete this highlight?",
       deleteVocabularyItem: "Delete this vocabulary item?",
       deleteExplanation: "Delete this lookup record?",
-      clearExplanations: "Clear all lookup records?"
+      clearExplanations: "Clear all lookup records?",
     },
     settings: {
       llm: "LLM",
+      llmCostNotice:
+        "Note: Using an LLM for translation or word lookup may incur costs, depending on the selected provider. Configure and save your key carefully.",
+      provider: "Provider",
+      providerHelp: "Translation itself is low-cost, so prioritize API response speed first.",
+      customProvider: "Custom",
+      providerDescriptions: {
+        zhipu: "Affordable models are available for free, but responses can be slower.",
+        gemini: "Includes a practical free quota that Google resets regularly.",
+        openrouter: "Free models are available; use openrouter/free or choose one from the marketplace.",
+        deepseek: "No official free quota yet, but v4 flash is very inexpensive, about CNY 0.02 for 30 calls.",
+        aliyun: "New users receive free quota; billing starts after the quota is used.",
+        volcengine: "New users receive free quota; billing starts after the quota is used.",
+        custom: "Use any resource that fits your needs, including local models, as long as it follows the OpenAI API format.",
+      },
       baseUrl: "Base URL",
       apiKey: "API Key",
+      apiKeyHelp: "This configuration is stored only in your local browser.",
       model: "Model",
+      modelHelp: "Flash or similar fast models are recommended for quicker responses.",
       temperature: "Temperature",
       timeoutMs: "Timeout ms",
       promptTemplate: "Prompt template",
-      promptTemplateHelp: "Available variables: {{task}}, {{selection}}, {{context}}",
+      promptTemplateHelp:
+        "Available variables: {{task}}, {{selection}}, {{context}}",
       behavior: "Behavior",
-      autoCloseLookupPanelOnCopy: "Automatically close lookup popup after copying",
+      autoCloseLookupPanelOnCopy:
+        "Automatically close lookup popup after copying",
       language: "Language",
-      languageHelp: "The selected language is used for the interface and as the LLM translation target language.",
+      languageHelp:
+        "The selected language is used for the interface and as the LLM translation target language.",
       pronunciation: "Pronunciation",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "Preferences",
       enableExtensionGlobally: "Enable page highlighting globally",
+      recordsPageSize: "Highlights and vocabulary page size",
       defaultHighlightColor: "Default highlight color",
       disabledSites: "Disabled sites",
       disabledSitesHelp: "One hostname per line, for example: example.com",
       importExport: "Import / Export",
-      includeSensitiveConfig: "Include sensitive configuration in JSON export"
+      includeSensitiveConfig: "Include sensitive configuration in JSON export",
     },
     notices: {
       settingsSaved: "Settings saved.",
@@ -119,23 +140,47 @@ export const en = {
       jsonExported: "JSON exported.",
       markdownExported: "Markdown exported.",
       promptRestored: "Default prompt restored.",
-      pronunciationStarted: "Pronunciation started."
+      pronunciationStarted: "Pronunciation started.",
     },
     errors: {
-      promptTemplateMissingVariables: "Prompt template is missing required variables: {{variables}}"
+      promptTemplateMissingVariables:
+        "Prompt template is missing required variables: {{variables}}",
     },
     statusDescriptions: {
       active: "This highlight was restored on the source page.",
       not_found: "The saved text anchor was not found on the source page.",
-      ambiguous: "The saved text anchor matched multiple places on the source page.",
-      pending: "This highlight has not been restored on a source page yet."
+      ambiguous:
+        "The saved text anchor matched multiple places on the source page.",
+      pending: "This highlight has not been restored on a source page yet.",
     },
     export: {
       explanationsTitle: "Lookup Records",
       exported: "Exported",
       source: "Source",
       model: "Model",
-      untitled: "Untitled"
-    }
-  }
+      untitled: "Untitled",
+    },
+    about: {
+      plan: {
+        title: "Plan",
+        body: "The next planned capability is a vocabulary review schedule based on the forgetting curve, helping saved words move from quick lookup records into long-term memory.",
+      },
+      releases: {
+        title: "Releases",
+        version: "1.0.0",
+        summary:
+          "The first stable release focuses on reading, annotating, looking up words with AI, and preserving the learning context across visits.",
+        feature1:
+          "Highlight memorable passages on web pages and manage those highlights in one place.",
+        feature2:
+          "Use an AI model to explain selected words in context and automatically save them to the vocabulary list.",
+        feature3:
+          "When revisiting a page, restore previous highlights and vocabulary underlines, with translations available from the page.",
+        feature4:
+          "Play word pronunciation through configured dictionary audio or browser speech synthesis fallback.",
+        feature5:
+          "Import and export key learning data for backup, review, and migration.",
+      },
+    },
+  },
 } as const;

@@ -11,7 +11,7 @@ export const zhTW: Messages = {
     cancel: "取消",
     delete: "刪除",
     empty: "空",
-    openSource: "開啟來源"
+    openSource: "開啟來源",
   },
   popup: {
     loading: "載入中",
@@ -19,7 +19,7 @@ export const zhTW: Messages = {
     noSite: "無站點",
     enableExtension: "啟用外掛",
     enableCurrentSite: "啟用目前站點",
-    openManagementPage: "開啟管理頁面"
+    openManagementPage: "開啟管理頁面",
   },
   content: {
     copy: "複製",
@@ -42,14 +42,15 @@ export const zhTW: Messages = {
     copyExplanation: "複製解釋",
     close: "關閉",
     copied: "已複製",
-    savedHighlights: "已儲存 {{count}} 條標記。"
+    savedHighlights: "已儲存 {{count}} 條標記。",
   },
   options: {
     tabs: {
       highlights: "標記",
       vocabulary: "生字表",
       explanations: "查詞記錄",
-      settings: "設定"
+      settings: "設定",
+      about: "關於",
     },
     columns: {
       highlightedText: "標記文字",
@@ -59,11 +60,11 @@ export const zhTW: Messages = {
       actions: "操作",
       word: "單字",
       context: "上下文",
-      audio: "發音"
+      audio: "發音",
     },
     filters: {
       allColors: "全部顏色",
-      reset: "重置"
+      reset: "重置",
     },
     actions: {
       copyHighlightedText: "複製標記文字",
@@ -80,19 +81,35 @@ export const zhTW: Messages = {
       exportMarkdown: "匯出 Markdown",
       importJson: "匯入 JSON",
       saveSettings: "儲存設定",
-      restoreDefault: "恢復預設"
+      restoreDefault: "恢復預設",
     },
     confirmations: {
       deleteHighlight: "刪除這條標記？",
       deleteVocabularyItem: "刪除這個生字？",
       deleteExplanation: "刪除這條查詞記錄？",
-      clearExplanations: "清除所有查詞記錄？"
+      clearExplanations: "清除所有查詞記錄？",
     },
     settings: {
       llm: "大型語言模型",
+      llmCostNotice:
+        "注意：呼叫大型語言模型翻譯或查詞可能產生費用，由所選模型廠商決定，請妥善設定並保存 Key 資訊。",
+      provider: "模型廠商",
+      providerHelp: "翻譯本身的成本消耗較低，建議以接口回應速度作為第一考量因素。",
+      customProvider: "自訂",
+      providerDescriptions: {
+        zhipu: "有普惠模型可免費使用，但速度偏慢。",
+        gemini: "有一定量的免費額度，官方定期重置，完全夠用。",
+        openrouter: "有免費模型可供使用，可使用 openrouter/free 或到官方市場上選擇。",
+        deepseek: "官方暫無免費額度，但是 v4 flash 非常便宜，30 次呼叫約 2 分錢。",
+        aliyun: "新使用者有免費額度，免費額度用完後開始計費。",
+        volcengine: "新使用者有免費額度，免費額度用完後開始計費。",
+        custom: "根據自己的資源和需求選擇，滿足 OpenAI API 規範的接口都可以使用，本機模型也可以。",
+      },
       baseUrl: "Base URL",
       apiKey: "API Key",
+      apiKeyHelp: "本設定資訊僅會保存到本機瀏覽器。",
       model: "模型",
+      modelHelp: "建議選用 Flash 或類似類型的模型以加快回應速度。",
       temperature: "Temperature",
       timeoutMs: "逾時時間 ms",
       promptTemplate: "提示詞模板",
@@ -105,11 +122,12 @@ export const zhTW: Messages = {
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "偏好",
       enableExtensionGlobally: "啟用全域頁面標記",
+      recordsPageSize: "標記和生字表每頁數量",
       defaultHighlightColor: "預設標記顏色",
       disabledSites: "停用站點",
       disabledSitesHelp: "每行一個 hostname，例如：example.com",
       importExport: "匯入 / 匯出",
-      includeSensitiveConfig: "JSON 匯出包含敏感設定"
+      includeSensitiveConfig: "JSON 匯出包含敏感設定",
     },
     notices: {
       settingsSaved: "設定已儲存。",
@@ -121,23 +139,41 @@ export const zhTW: Messages = {
       jsonExported: "JSON 已匯出。",
       markdownExported: "Markdown 已匯出。",
       promptRestored: "已恢復預設提示詞。",
-      pronunciationStarted: "已開始播放發音。"
+      pronunciationStarted: "已開始播放發音。",
     },
     errors: {
-      promptTemplateMissingVariables: "提示詞模板缺少必要變數：{{variables}}"
+      promptTemplateMissingVariables: "提示詞模板缺少必要變數：{{variables}}",
     },
     statusDescriptions: {
       active: "這條標記已在來源頁面恢復。",
       not_found: "來源頁面中找不到儲存的文字錨點。",
       ambiguous: "來源頁面中符合多個位置，無法安全恢復。",
-      pending: "這條標記尚未在來源頁面完成恢復確認。"
+      pending: "這條標記尚未在來源頁面完成恢復確認。",
     },
     export: {
       explanationsTitle: "查詞記錄",
       exported: "匯出時間",
       source: "來源",
       model: "模型",
-      untitled: "未命名"
-    }
-  }
+      untitled: "未命名",
+    },
+    about: {
+      plan: {
+        title: "Plan",
+        body: "後續計畫增加基於遺忘曲線的生字複習計畫，讓臨時查詞沉澱為可持續複習的長期記憶。",
+      },
+      releases: {
+        title: "Releases",
+        version: "1.0.0",
+        summary:
+          "第一個穩定版本聚焦外文閱讀、內容標記、AI 查詞和學習上下文留存。",
+        feature1: "在網頁中高亮標記精彩內容，並在管理頁統一整理。",
+        feature2: "呼叫 AI 大型語言模型解釋選中的生字，並自動保存到生字表。",
+        feature3:
+          "再次訪問頁面時自動恢復之前的標記和生字底線，並可查看生字翻譯。",
+        feature4: "支援生字發音，優先使用詞典音訊，並提供瀏覽器語音兜底。",
+        feature5: "支援關鍵學習資料匯入匯出，便於備份、複習和遷移。",
+      },
+    },
+  },
 };
