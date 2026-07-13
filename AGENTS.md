@@ -71,3 +71,13 @@ Use `npm run build` before considering larger UI or extension-behavior changes c
 - Add optional fields to persisted records without bumping IndexedDB schema when old records can remain valid.
 - Keep LLM API keys out of content scripts and page DOM. The service worker should read settings and make model requests.
 - When adding settings, normalize missing or invalid values in `normalizeSettings`.
+
+<!-- OPENWIKI:START -->
+
+## OpenWiki
+
+This repository uses OpenWiki for recurring code documentation. Start with `openwiki/quickstart.md`, then follow its links to architecture, workflows, domain concepts, operations, integrations, testing guidance, and source maps.
+
+The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do not hand-edit generated OpenWiki pages unless explicitly asked; prefer updating source code/docs and letting OpenWiki regenerate.
+
+<!-- OPENWIKI:END -->

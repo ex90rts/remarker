@@ -1,5 +1,6 @@
 node_modules/
 dist/
 cert/
+openwiki/
 .DS_Store
 *.log
