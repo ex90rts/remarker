@@ -72,6 +72,7 @@ import {
   RECORDS_PAGE_SIZE_OPTIONS,
   getLlmProviderPreset,
   getDefaultPromptTemplate,
+  isDefaultPromptTemplate,
   normalizeLlmProviderConfig,
   normalizeLlmProvider,
   normalizeRecordsPageSize,
@@ -370,9 +371,9 @@ function Toast({
       role={isError ? "alert" : "status"}
       sx={{
         position: "fixed",
-        top: "50%",
+        top: "30%",
         left: "50%",
-        transform: "translate(-50%, -50%)",
+        transform: "translateX(-50%)",
         zIndex: 2000,
         display: "flex",
         alignItems: "center",
@@ -609,84 +610,90 @@ function HighlightsTab({
           </TableRow>
         </TableHead>
         <TableBody>
-          {pageItems.map((highlight) => (
-            <TableRow key={highlight.id}>
-              <TableCell sx={{ maxWidth: 420 }}>
-                <Typography component="div" variant="body2">
-                  {highlight.selectedText}
-                </Typography>
-                <Typography
-                  component="div"
-                  variant="caption"
-                  color="text.secondary"
-                >
-                  {t.common.created} {formatCreatedAt(highlight.createdAt)}
-                </Typography>
-              </TableCell>
-              <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                <SourceLink
-                  href={highlight.sourceUrl}
-                  label={highlight.sourceTitle || highlight.sourceUrl}
-                />
-              </TableCell>
-              <TableCell>
-                <Chip
-                  size="small"
-                  label={highlight.status}
-                  title={getHighlightStatusDescription(highlight.status, t)}
-                />
-              </TableCell>
-              <TableCell>
-                <Box
-                  component="span"
-                  title={highlight.color}
-                  sx={{
-                    display: "inline-block",
-                    width: 22,
-                    height: 22,
-                    borderRadius: "6px",
-                    border: "1px solid rgba(15, 23, 42, 0.16)",
-                    bgcolor: HIGHLIGHT_COLORS[highlight.color],
-                    verticalAlign: "middle",
-                  }}
-                />
-              </TableCell>
-              <TableCell align="center">
-                <CopyIconButton
-                  label={t.options.actions.copyHighlightedText}
-                  text={highlight.selectedText}
-                  notify={notify}
-                  t={t}
-                />
-                <ConfirmDeleteIconButton
-                  label={t.options.actions.deleteHighlight}
-                  message={t.options.confirmations.deleteHighlight}
-                  onConfirm={async () => {
-                    await runAction(async () => {
-                      await sendMessage({
-                        type: "DELETE_HIGHLIGHT",
-                        id: highlight.id,
-                      });
-                      await onChange();
-                    }, t.options.notices.highlightDeleted);
-                  }}
-                  t={t}
-                />
-              </TableCell>
-            </TableRow>
-          ))}
+          {pageItems.length === 0 ? (
+            <EmptyTableRow colSpan={5} message={t.options.empty.highlights} />
+          ) : (
+            pageItems.map((highlight) => (
+              <TableRow key={highlight.id}>
+                <TableCell sx={{ maxWidth: 420 }}>
+                  <Typography component="div" variant="body2">
+                    {highlight.selectedText}
+                  </Typography>
+                  <Typography
+                    component="div"
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    {t.common.created} {formatCreatedAt(highlight.createdAt)}
+                  </Typography>
+                </TableCell>
+                <TableCell sx={{ width: 240, maxWidth: 240 }}>
+                  <SourceLink
+                    href={highlight.sourceUrl}
+                    label={highlight.sourceTitle || highlight.sourceUrl}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Chip
+                    size="small"
+                    label={highlight.status}
+                    title={getHighlightStatusDescription(highlight.status, t)}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Box
+                    component="span"
+                    title={highlight.color}
+                    sx={{
+                      display: "inline-block",
+                      width: 22,
+                      height: 22,
+                      borderRadius: "6px",
+                      border: "1px solid rgba(15, 23, 42, 0.16)",
+                      bgcolor: HIGHLIGHT_COLORS[highlight.color],
+                      verticalAlign: "middle",
+                    }}
+                  />
+                </TableCell>
+                <TableCell align="center">
+                  <CopyIconButton
+                    label={t.options.actions.copyHighlightedText}
+                    text={highlight.selectedText}
+                    notify={notify}
+                    t={t}
+                  />
+                  <ConfirmDeleteIconButton
+                    label={t.options.actions.deleteHighlight}
+                    message={t.options.confirmations.deleteHighlight}
+                    onConfirm={async () => {
+                      await runAction(async () => {
+                        await sendMessage({
+                          type: "DELETE_HIGHLIGHT",
+                          id: highlight.id,
+                        });
+                        await onChange();
+                      }, t.options.notices.highlightDeleted);
+                    }}
+                    t={t}
+                  />
+                </TableCell>
+              </TableRow>
+            ))
+          )}
         </TableBody>
-        <TableFooter>
-          <TableRow>
-            <RecordsTablePagination
-              count={sortedHighlights.length}
-              page={page}
-              recordsPageSize={recordsPageSize}
-              onPageChange={setPage}
-              colSpan={5}
-            />
-          </TableRow>
-        </TableFooter>
+        {sortedHighlights.length > 0 && (
+          <TableFooter>
+            <TableRow>
+              <RecordsTablePagination
+                count={sortedHighlights.length}
+                page={page}
+                recordsPageSize={recordsPageSize}
+                onPageChange={setPage}
+                colSpan={5}
+              />
+            </TableRow>
+          </TableFooter>
+        )}
       </Table>
     </Stack>
   );
@@ -827,187 +834,203 @@ function VocabularyTab({
           </TableRow>
         </TableHead>
         <TableBody>
-          {pageItems.map((item) => (
-            <Fragment key={item.id}>
-              <TableRow>
-                <TableCell>
-                  <IconButton
-                    size="small"
-                    aria-label={
-                      expandedRows[item.id]
-                        ? t.options.actions.collapseTranslation
-                        : t.options.actions.expandTranslation
-                    }
-                    onClick={() =>
-                      setExpandedRows((rows) => ({
-                        ...rows,
-                        [item.id]: !rows[item.id],
-                      }))
-                    }
-                  >
-                    {expandedRows[item.id] ? (
-                      <ChevronDown size={16} />
-                    ) : (
-                      <ChevronRight size={16} />
-                    )}
-                  </IconButton>
-                </TableCell>
-                <TableCell sx={{ width: 260 }}>
-                  <Typography component="div" variant="body2" fontWeight={600}>
-                    {item.word}
-                  </Typography>
-                  <Typography
-                    component="div"
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ whiteSpace: "nowrap" }}
-                  >
-                    {t.common.created} {formatCreatedAt(item.createdAt)}
-                  </Typography>
-                </TableCell>
-                <TableCell>
-                  <IconButton
-                    aria-label={interpolate(t.options.actions.speakWord, {
-                      word: item.word,
-                    })}
-                    onClick={() =>
-                      void runAction(
-                        () => speakWord(item.word),
-                        t.options.notices.pronunciationStarted,
-                      )
-                    }
-                  >
-                    <Volume2 size={16} />
-                  </IconButton>
-                </TableCell>
-                <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                  <Typography
-                    component="div"
-                    variant="body2"
-                    title={item.contextSentence}
-                    sx={twoLineClampSx}
-                  >
-                    {item.contextSentence}
-                  </Typography>
-                </TableCell>
-                <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                  <SourceLink
-                    href={item.sourceUrl}
-                    label={item.sourceTitle || item.sourceUrl}
-                  />
-                </TableCell>
-                <TableCell align="center">
-                  <ConfirmDeleteIconButton
-                    label={t.options.actions.deleteVocabularyItem}
-                    message={t.options.confirmations.deleteVocabularyItem}
-                    onConfirm={async () => {
-                      await runAction(async () => {
-                        await sendMessage({
-                          type: "DELETE_VOCABULARY",
-                          id: item.id,
-                        });
-                        await onChange();
-                      }, t.options.notices.vocabularyDeleted);
+          {pageItems.length === 0 ? (
+            <EmptyTableRow colSpan={6} message={t.options.empty.vocabulary} />
+          ) : (
+            pageItems.map((item) => (
+              <Fragment key={item.id}>
+                <TableRow>
+                  <TableCell>
+                    <IconButton
+                      size="small"
+                      aria-label={
+                        expandedRows[item.id]
+                          ? t.options.actions.collapseTranslation
+                          : t.options.actions.expandTranslation
+                      }
+                      onClick={() =>
+                        setExpandedRows((rows) => ({
+                          ...rows,
+                          [item.id]: !rows[item.id],
+                        }))
+                      }
+                    >
+                      {expandedRows[item.id] ? (
+                        <ChevronDown size={16} />
+                      ) : (
+                        <ChevronRight size={16} />
+                      )}
+                    </IconButton>
+                  </TableCell>
+                  <TableCell sx={{ width: 260 }}>
+                    <Typography
+                      component="div"
+                      variant="body2"
+                      fontWeight={600}
+                    >
+                      {item.word}
+                    </Typography>
+                    <Typography
+                      component="div"
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ whiteSpace: "nowrap" }}
+                    >
+                      {t.common.created} {formatCreatedAt(item.createdAt)}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>
+                    <IconButton
+                      aria-label={interpolate(t.options.actions.speakWord, {
+                        word: item.word,
+                      })}
+                      onClick={() => void runAction(() => speakWord(item.word))}
+                    >
+                      <Volume2 size={16} />
+                    </IconButton>
+                  </TableCell>
+                  <TableCell sx={{ width: 240, maxWidth: 240 }}>
+                    <Typography
+                      component="div"
+                      variant="body2"
+                      title={item.contextSentence}
+                      sx={twoLineClampSx}
+                    >
+                      {item.contextSentence}
+                    </Typography>
+                  </TableCell>
+                  <TableCell sx={{ width: 240, maxWidth: 240 }}>
+                    <SourceLink
+                      href={item.sourceUrl}
+                      label={item.sourceTitle || item.sourceUrl}
+                    />
+                  </TableCell>
+                  <TableCell align="center">
+                    <ConfirmDeleteIconButton
+                      label={t.options.actions.deleteVocabularyItem}
+                      message={t.options.confirmations.deleteVocabularyItem}
+                      onConfirm={async () => {
+                        await runAction(async () => {
+                          await sendMessage({
+                            type: "DELETE_VOCABULARY",
+                            id: item.id,
+                          });
+                          await onChange();
+                        }, t.options.notices.vocabularyDeleted);
+                      }}
+                      t={t}
+                    />
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
+                    sx={{
+                      py: 0,
+                      borderBottom: expandedRows[item.id] ? undefined : 0,
                     }}
-                    t={t}
-                  />
-                </TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell
-                  colSpan={6}
-                  sx={{
-                    py: 0,
-                    borderBottom: expandedRows[item.id] ? undefined : 0,
-                  }}
-                >
-                  <Collapse
-                    in={Boolean(expandedRows[item.id])}
-                    timeout="auto"
-                    unmountOnExit
                   >
-                    <Box sx={{ px: 2, py: 1.5, ml: 5 }}>
-                      <Box
-                        sx={{
-                          bgcolor: "#f8fafc",
-                          border: "1px solid #e2e8f0",
-                          borderRadius: 1,
-                          p: 1.5,
-                          mb: 1.5,
-                        }}
-                      >
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          component="div"
-                          sx={{ mb: 0.5 }}
-                        >
-                          {t.options.columns.context}
-                        </Typography>
-                        <Typography
-                          variant="body2"
+                    <Collapse
+                      in={Boolean(expandedRows[item.id])}
+                      timeout="auto"
+                      unmountOnExit
+                    >
+                      <Box sx={{ px: 2, py: 1.5, ml: 5 }}>
+                        <Box
                           sx={{
-                            whiteSpace: "pre-wrap",
-                            overflowWrap: "anywhere",
+                            bgcolor: "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 1,
+                            p: 1.5,
+                            mb: 1.5,
                           }}
                         >
-                          {renderHighlightedContext(
-                            item.contextSentence || t.common.empty,
-                            item.word,
-                          )}
-                        </Typography>
-                      </Box>
-                      <Stack
-                        direction="row"
-                        justifyContent="space-between"
-                        alignItems="center"
-                        sx={{ mb: 0.5 }}
-                      >
-                        <Typography variant="caption" color="text.secondary">
-                          {t.content.explanation}
-                        </Typography>
-                        <CopyIconButton
-                          label={t.options.actions.copyExplanation}
-                          text={item.translation || ""}
-                          notify={notify}
-                          t={t}
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            component="div"
+                            sx={{ mb: 0.5 }}
+                          >
+                            {t.options.columns.context}
+                          </Typography>
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              whiteSpace: "pre-wrap",
+                              overflowWrap: "anywhere",
+                            }}
+                          >
+                            {renderHighlightedContext(
+                              item.contextSentence || t.common.empty,
+                              item.word,
+                            )}
+                          </Typography>
+                        </Box>
+                        <Stack
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{
+                            mb: 0.5,
+                            pb: 0.5,
+                            borderBottom: "1px solid #dadada",
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              color: "#000",
+                              fontSize: "1em",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {t.content.explanation}
+                          </Typography>
+                          <CopyIconButton
+                            label={t.options.actions.copyExplanation}
+                            text={item.translation || ""}
+                            notify={notify}
+                            t={t}
+                          />
+                        </Stack>
+                        <Box
+                          className="markdown-body"
+                          sx={{
+                            color: item.translation
+                              ? "text.primary"
+                              : "text.secondary",
+                            fontSize: 14,
+                            lineHeight: 1.65,
+                            overflowWrap: "anywhere",
+                            ...markdownBodySx,
+                          }}
+                          dangerouslySetInnerHTML={{
+                            __html: markdownToSafeHtml(
+                              item.translation || t.common.empty,
+                            ),
+                          }}
                         />
-                      </Stack>
-                      <Box
-                        className="markdown-body"
-                        sx={{
-                          color: item.translation
-                            ? "text.primary"
-                            : "text.secondary",
-                          fontSize: 14,
-                          lineHeight: 1.65,
-                          overflowWrap: "anywhere",
-                          ...markdownBodySx,
-                        }}
-                        dangerouslySetInnerHTML={{
-                          __html: markdownToSafeHtml(
-                            item.translation || t.common.empty,
-                          ),
-                        }}
-                      />
-                    </Box>
-                  </Collapse>
-                </TableCell>
-              </TableRow>
-            </Fragment>
-          ))}
+                      </Box>
+                    </Collapse>
+                  </TableCell>
+                </TableRow>
+              </Fragment>
+            ))
+          )}
         </TableBody>
-        <TableFooter>
-          <TableRow>
-            <RecordsTablePagination
-              count={sortedVocabulary.length}
-              page={page}
-              recordsPageSize={recordsPageSize}
-              onPageChange={setPage}
-              colSpan={6}
-            />
-          </TableRow>
-        </TableFooter>
+        {sortedVocabulary.length > 0 && (
+          <TableFooter>
+            <TableRow>
+              <RecordsTablePagination
+                count={sortedVocabulary.length}
+                page={page}
+                recordsPageSize={recordsPageSize}
+                onPageChange={setPage}
+                colSpan={6}
+              />
+            </TableRow>
+          </TableFooter>
+        )}
       </Table>
     </Stack>
   );
@@ -1034,6 +1057,24 @@ function usePagedItems<T>(items: T[], recordsPageSize: RecordsPageSize) {
     ),
     setPage,
   };
+}
+
+function EmptyTableRow({
+  colSpan,
+  message,
+}: {
+  colSpan: number;
+  message: string;
+}) {
+  return (
+    <TableRow>
+      <TableCell colSpan={colSpan} align="center" sx={{ py: 6 }}>
+        <Typography color="text.secondary" variant="body2">
+          {message}
+        </Typography>
+      </TableCell>
+    </TableRow>
+  );
 }
 
 function RecordsTablePagination({
@@ -1332,8 +1373,17 @@ function SettingsTab({
   }
 
   function updateLanguage(language: AppSettings["ui"]["language"]) {
+    const shouldUpdatePromptTemplate = isDefaultPromptTemplate(
+      settings.llm.promptTemplate,
+    );
     setSettings({
       ...settings,
+      llm: shouldUpdatePromptTemplate
+        ? {
+            ...settings.llm,
+            promptTemplate: getDefaultPromptTemplate(language),
+          }
+        : settings.llm,
       ui: { ...settings.ui, language },
     });
   }
@@ -1374,7 +1424,10 @@ function SettingsTab({
     setPromptTemplateError("");
     setSettings({
       ...settings,
-      llm: { ...settings.llm, promptTemplate: getDefaultPromptTemplate() },
+      llm: {
+        ...settings.llm,
+        promptTemplate: getDefaultPromptTemplate(settings.ui.language),
+      },
     });
     notify(t.options.notices.promptRestored);
   }

@@ -66,6 +66,10 @@ export const zhCN: Messages = {
       allColors: "全部颜色",
       reset: "重置",
     },
+    empty: {
+      highlights: "暂无划线数据。",
+      vocabulary: "暂无生词数据。",
+    },
     actions: {
       copyHighlightedText: "复制划线文本",
       deleteHighlight: "删除划线",
@@ -92,7 +96,7 @@ export const zhCN: Messages = {
     settings: {
       llm: "大模型",
       llmCostNotice:
-        "注意：调用大模型翻译或查词有可能产生费用，由所选择的模型厂商决定，请妥善配置并保存 Key 信息。",
+        "注意：调用大模型翻译或查词有可能产生费用，由所选择的模型厂商决定和收取，请妥善配置并保存 Key 信息。",
       provider: "模型厂商",
       providerHelp:
         "翻译本身的成本消耗较低，推荐以接口返回速度为第一考量因素。",
@@ -121,7 +125,8 @@ export const zhCN: Messages = {
       behavior: "行为",
       autoCloseLookupPanelOnCopy: "查词弹窗复制后自动关闭",
       language: "语言",
-      languageHelp: "所选语言为界面语言，同时为大模型翻译的目标语言。",
+      languageHelp:
+        "所选语言为界面语言，同时为大模型翻译的目标语言，建议开始用的时候确定好之后就不要再修改。",
       pronunciation: "发音",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "偏好",
@@ -164,7 +169,7 @@ export const zhCN: Messages = {
     about: {
       plan: {
         title: "Plan",
-        body: "后续计划增加基于遗忘曲线的生词复习计划，让临时查词沉淀为可持续复习的长期记忆。",
+        body: "后续计划增加基于遗忘曲线的生词复习计划，让临时查词沉淀为可持续复习的长期记忆，并支持数据在不同设备之间同步。",
       },
       releases: {
         title: "Releases",

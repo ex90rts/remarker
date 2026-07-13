@@ -1,3 +1,8 @@
+import {
+  createSemanticContext,
+  DEFAULT_CONTEXT_CHAR_LIMIT,
+} from "../shared/context";
+
 export {};
 
 type HighlightColor = "yellow" | "green" | "blue" | "pink" | "purple";
@@ -42,6 +47,12 @@ interface SelectionState {
 interface TextSnapshot {
   nodes: Text[];
   text: string;
+}
+
+interface ContextTextSnapshot {
+  text: string;
+  selectionStart: number;
+  selectionEnd: number;
 }
 
 interface RangeMatch {
@@ -193,7 +204,7 @@ const WORD_PATTERN = /^[A-Za-z]+(?:[-'][A-Za-z]+)*$/;
 const HIGHLIGHT_CLASS = "remarker-highlight";
 const LOOKUP_CLASS = "remarker-lookup";
 const LOOKUP_UNDERLINE_COLOR = "#f97316";
-const CONTEXT_SURROUNDING_CHAR_LIMIT = 800;
+const CONTEXT_CHAR_LIMIT = DEFAULT_CONTEXT_CHAR_LIMIT;
 const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
   yellow: "#ffe66d",
   green: "#b7f7c2",
@@ -1024,32 +1035,125 @@ function renderExistingHighlightToolbar(
 }
 
 function getContextForRange(range: Range): string {
-  const snapshot = getAnchorTextSnapshot();
-  const offsets = getTextOffsetsForRange(range, snapshot);
-  if (!offsets) return range.toString().trim();
+  const snapshot = getContextTextSnapshot(range);
+  if (!snapshot) return range.toString().trim();
 
-  const selectedText = snapshot.text.slice(offsets.start, offsets.end);
-  const beforeAvailable = offsets.start;
-  const afterAvailable = snapshot.text.length - offsets.end;
-  const preferredBefore = Math.floor(CONTEXT_SURROUNDING_CHAR_LIMIT / 2);
-  const preferredAfter = CONTEXT_SURROUNDING_CHAR_LIMIT - preferredBefore;
-  const beforeLength = Math.min(
-    beforeAvailable,
-    preferredBefore +
-      Math.max(0, preferredAfter - Math.min(afterAvailable, preferredAfter)),
-  );
-  const afterLength = Math.min(
-    afterAvailable,
-    CONTEXT_SURROUNDING_CHAR_LIMIT - beforeLength,
-  );
+  return createSemanticContext({
+    text: snapshot.text,
+    selectionStart: snapshot.selectionStart,
+    selectionEnd: snapshot.selectionEnd,
+    maxLength: CONTEXT_CHAR_LIMIT,
+  });
+}
 
+function getContextTextSnapshot(range: Range): ContextTextSnapshot | undefined {
+  let text = "";
+  let selectionStart: number | undefined;
+  let selectionEnd: number | undefined;
+
+  function appendBreak(): void {
+    if (text && !text.endsWith("\n")) text += "\n";
+  }
+
+  function visit(node: Node): void {
+    if (shouldIgnoreContextNode(node)) return;
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      const textNode = node as Text;
+      if (textNode === range.startContainer) {
+        selectionStart = text.length + range.startOffset;
+      }
+      if (textNode === range.endContainer) {
+        selectionEnd = text.length + range.endOffset;
+      }
+      text += textNode.data;
+      return;
+    }
+
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    const element = node as Element;
+
+    if (element.tagName.toLowerCase() === "br") {
+      appendBreak();
+      return;
+    }
+
+    const isBlock = isContextBlockElement(element);
+    if (isBlock) appendBreak();
+
+    Array.from(element.childNodes).forEach((child, index) => {
+      captureElementBoundaryOffset(element, index);
+      visit(child);
+    });
+    captureElementBoundaryOffset(element, element.childNodes.length);
+
+    if (isBlock) appendBreak();
+  }
+
+  function captureElementBoundaryOffset(element: Element, offset: number): void {
+    if (range.startContainer === element && range.startOffset === offset) {
+      selectionStart = text.length;
+    }
+    if (range.endContainer === element && range.endOffset === offset) {
+      selectionEnd = text.length;
+    }
+  }
+
+  visit(document.body);
+
+  if (selectionStart === undefined || selectionEnd === undefined) {
+    return undefined;
+  }
+  return { text, selectionStart, selectionEnd };
+}
+
+function shouldIgnoreContextNode(node: Node): boolean {
+  const element =
+    node.nodeType === Node.ELEMENT_NODE
+      ? (node as Element)
+      : node.parentElement;
+
+  return Boolean(
+    element?.closest(
+      `#remarker-root, script, style, noscript, template, [hidden], [aria-hidden="true"]`,
+    ),
+  );
+}
+
+function isContextBlockElement(element: Element): boolean {
   return [
-    snapshot.text.slice(offsets.start - beforeLength, offsets.start),
-    selectedText,
-    snapshot.text.slice(offsets.end, offsets.end + afterLength),
-  ]
-    .join("")
-    .trim();
+    "article",
+    "aside",
+    "blockquote",
+    "dd",
+    "div",
+    "dl",
+    "dt",
+    "figcaption",
+    "figure",
+    "footer",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "header",
+    "li",
+    "main",
+    "nav",
+    "ol",
+    "p",
+    "pre",
+    "section",
+    "table",
+    "tbody",
+    "td",
+    "th",
+    "thead",
+    "tr",
+    "ul",
+  ].includes(element.tagName.toLowerCase());
 }
 
 function getBlockElement(node: Node): HTMLElement | null {

@@ -64,6 +64,10 @@ export const en = {
       allColors: "All colors",
       reset: "Reset",
     },
+    empty: {
+      highlights: "No highlights to show.",
+      vocabulary: "No vocabulary items to show.",
+    },
     actions: {
       copyHighlightedText: "Copy highlighted text",
       deleteHighlight: "Delete highlight",
@@ -118,7 +122,7 @@ export const en = {
         "Automatically close lookup popup after copying",
       language: "Language",
       languageHelp:
-        "The selected language is used for the interface and as the LLM translation target language.",
+        "The selected language is used for the interface and as the LLM translation target language. It is recommended to choose it before you start using the extension and avoid changing it later.",
       pronunciation: "Pronunciation",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "Preferences",
@@ -163,7 +167,7 @@ export const en = {
     about: {
       plan: {
         title: "Plan",
-        body: "The next planned capability is a vocabulary review schedule based on the forgetting curve, helping saved words move from quick lookup records into long-term memory.",
+        body: "The next planned capabilities are a vocabulary review schedule based on the forgetting curve, helping saved words move from quick lookup records into long-term memory, and data sync across devices.",
       },
       releases: {
         title: "Releases",

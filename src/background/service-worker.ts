@@ -10,14 +10,15 @@ import {
   getSettings,
   importSnapshot,
   putInStore,
-  saveSettings
+  saveSettings,
 } from "../shared/repositories/db";
 import type {
   AppSettings,
   ExplanationRecord,
   HighlightRecord,
   HighlightStatus,
-  VocabularyRecord
+  LlmProvider,
+  VocabularyRecord,
 } from "../shared/types";
 import { getEffectiveLlmConfig } from "../shared/types";
 
@@ -25,27 +26,34 @@ const TARGET_LANGUAGE_NAMES: Record<AppSettings["ui"]["language"], string> = {
   "zh-CN": "Simplified Chinese",
   "zh-TW": "Traditional Chinese",
   en: "English",
-  es: "Spanish"
+  es: "Spanish",
 };
 
 chrome.runtime.onInstalled.addListener(async () => {
-  const cache = await chrome.storage.local.get(["globalEnabled", "disabledSites", "schemaVersion"]);
+  const cache = await chrome.storage.local.get([
+    "globalEnabled",
+    "disabledSites",
+    "schemaVersion",
+  ]);
   await chrome.storage.local.set({
     globalEnabled: cache.globalEnabled ?? true,
     disabledSites: cache.disabledSites ?? [],
-    schemaVersion: cache.schemaVersion ?? 1
+    schemaVersion: cache.schemaVersion ?? 1,
   });
 });
 
-chrome.runtime.onMessage.addListener((message: RuntimeMessage, _sender, sendResponse) => {
-  handleMessage(message)
-    .then((result) => sendResponse({ ok: true, result }))
-    .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : "Unknown error";
-      sendResponse({ ok: false, error: message });
-    });
-  return true;
-});
+chrome.runtime.onMessage.addListener(
+  (message: RuntimeMessage, _sender, sendResponse) => {
+    handleMessage(message)
+      .then((result) => sendResponse({ ok: true, result }))
+      .catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        sendResponse({ ok: false, error: message });
+      });
+    return true;
+  },
+);
 
 async function handleMessage(message: RuntimeMessage): Promise<unknown> {
   switch (message.type) {
@@ -93,17 +101,23 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
       return message.settings;
 
     case "OPEN_SETTINGS_PAGE":
-      await chrome.tabs.create({ url: chrome.runtime.getURL("options.html#settings") });
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL("options.html#settings"),
+      });
       return { opened: true };
 
     case "LIST_ALL_DATA": {
-      const [highlights, vocabulary, explanations, settings] = await Promise.all([
-        getAllFromStore<HighlightRecord>("highlights"),
-        getAllFromStore<VocabularyRecord>("vocabulary"),
-        getAllFromStore<ExplanationRecord>("explanations"),
-        getSettings()
-      ]);
-      const mergedVocabulary = await mergeVocabularyWithLegacyExplanations(vocabulary, explanations);
+      const [highlights, vocabulary, explanations, settings] =
+        await Promise.all([
+          getAllFromStore<HighlightRecord>("highlights"),
+          getAllFromStore<VocabularyRecord>("vocabulary"),
+          getAllFromStore<ExplanationRecord>("explanations"),
+          getSettings(),
+        ]);
+      const mergedVocabulary = await mergeVocabularyWithLegacyExplanations(
+        vocabulary,
+        explanations,
+      );
       return { highlights, vocabulary: mergedVocabulary, settings };
     }
 
@@ -121,7 +135,10 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
   }
 }
 
-async function updateHighlightStatus(id: string, status: HighlightStatus): Promise<HighlightRecord | undefined> {
+async function updateHighlightStatus(
+  id: string,
+  status: HighlightStatus,
+): Promise<HighlightRecord | undefined> {
   const highlights = await getAllFromStore<HighlightRecord>("highlights");
   const record = highlights.find((item) => item.id === id);
   if (!record) return undefined;
@@ -131,7 +148,10 @@ async function updateHighlightStatus(id: string, status: HighlightStatus): Promi
   return next;
 }
 
-async function updateHighlightColor(id: string, color: HighlightRecord["color"]): Promise<HighlightRecord | undefined> {
+async function updateHighlightColor(
+  id: string,
+  color: HighlightRecord["color"],
+): Promise<HighlightRecord | undefined> {
   const highlights = await getAllFromStore<HighlightRecord>("highlights");
   const record = highlights.find((item) => item.id === id);
   if (!record) return undefined;
@@ -141,7 +161,9 @@ async function updateHighlightColor(id: string, color: HighlightRecord["color"])
   return next;
 }
 
-async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_SELECTION" }>): Promise<ExplanationRecord> {
+async function explainSelection(
+  input: Extract<RuntimeMessage, { type: "EXPLAIN_SELECTION" }>,
+): Promise<ExplanationRecord> {
   const settings = await getSettings();
   const llm = getEffectiveLlmConfig(settings.llm);
   const modelIdentity = `${llm.provider}:${llm.model}`;
@@ -152,7 +174,7 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
     model: modelIdentity,
     selectionKind: input.selectionKind,
     promptTemplate: settings.llm.promptTemplate,
-    targetLanguage
+    targetLanguage,
   });
 
   const cached = await getExplanationByCacheKey(cacheKey);
@@ -161,10 +183,11 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
       ...cached,
       sourceUrl: input.sourceUrl,
       sourceTitle: input.sourceTitle,
-      anchor: input.anchor ?? cached.anchor
+      anchor: input.anchor ?? cached.anchor,
     };
     await putInStore("explanations", currentRecord);
-    if (input.selectionKind === "word") await upsertVocabularyFromExplanation(currentRecord);
+    if (input.selectionKind === "word")
+      await upsertVocabularyFromExplanation(currentRecord);
     return currentRecord;
   }
 
@@ -173,6 +196,7 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
   }
 
   const result = await callOpenAiCompatibleApi({
+    provider: llm.provider,
     baseUrl: llm.baseUrl,
     apiKey: llm.apiKey,
     model: llm.model,
@@ -182,7 +206,7 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
     targetLanguage,
     selectionKind: input.selectionKind,
     selectedText: input.selectedText,
-    context: input.context
+    context: input.context,
   });
 
   const record: ExplanationRecord = {
@@ -197,15 +221,18 @@ async function explainSelection(input: Extract<RuntimeMessage, { type: "EXPLAIN_
     anchor: input.anchor,
     model: modelIdentity,
     result,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
   };
 
   await putInStore("explanations", record);
-  if (input.selectionKind === "word") await upsertVocabularyFromExplanation(record);
+  if (input.selectionKind === "word")
+    await upsertVocabularyFromExplanation(record);
   return record;
 }
 
-async function getWordExplanationsForUrl(urlKey: string): Promise<ExplanationRecord[]> {
+async function getWordExplanationsForUrl(
+  urlKey: string,
+): Promise<ExplanationRecord[]> {
   const records = await getAllFromStore<ExplanationRecord>("explanations");
   return records.filter((record) => {
     if (safeNormalizeUrlKey(record.sourceUrl) !== urlKey) return false;
@@ -214,19 +241,26 @@ async function getWordExplanationsForUrl(urlKey: string): Promise<ExplanationRec
   });
 }
 
-async function getVocabularyForUrl(urlKey: string): Promise<VocabularyRecord[]> {
+async function getVocabularyForUrl(
+  urlKey: string,
+): Promise<VocabularyRecord[]> {
   const [vocabulary, explanations] = await Promise.all([
     getAllFromStore<VocabularyRecord>("vocabulary"),
-    getAllFromStore<ExplanationRecord>("explanations")
+    getAllFromStore<ExplanationRecord>("explanations"),
   ]);
-  const mergedVocabulary = await mergeVocabularyWithLegacyExplanations(vocabulary, explanations);
-  return mergedVocabulary.filter((record) => safeNormalizeUrlKey(record.sourceUrl) === urlKey);
+  const mergedVocabulary = await mergeVocabularyWithLegacyExplanations(
+    vocabulary,
+    explanations,
+  );
+  return mergedVocabulary.filter(
+    (record) => safeNormalizeUrlKey(record.sourceUrl) === urlKey,
+  );
 }
 
 async function deleteVocabulary(id: string): Promise<{ id: string }> {
   const [vocabulary, explanations] = await Promise.all([
     getAllFromStore<VocabularyRecord>("vocabulary"),
-    getAllFromStore<ExplanationRecord>("explanations")
+    getAllFromStore<ExplanationRecord>("explanations"),
   ]);
   const record = vocabulary.find((item) => item.id === id);
   const mergeKey = record ? getVocabularyMergeKey(record) : undefined;
@@ -234,7 +268,12 @@ async function deleteVocabulary(id: string): Promise<{ id: string }> {
   await deleteFromStore("vocabulary", id);
 
   for (const explanation of explanations) {
-    if (explanation.id === id || (mergeKey && getVocabularyMergeKey(vocabularyFromExplanation(explanation)) === mergeKey)) {
+    if (
+      explanation.id === id ||
+      (mergeKey &&
+        getVocabularyMergeKey(vocabularyFromExplanation(explanation)) ===
+          mergeKey)
+    ) {
       await deleteFromStore("explanations", explanation.id);
     }
   }
@@ -244,9 +283,11 @@ async function deleteVocabulary(id: string): Promise<{ id: string }> {
 
 async function mergeVocabularyWithLegacyExplanations(
   vocabulary: VocabularyRecord[],
-  explanations: ExplanationRecord[]
+  explanations: ExplanationRecord[],
 ): Promise<VocabularyRecord[]> {
-  const byKey = new Map(vocabulary.map((record) => [getVocabularyMergeKey(record), record]));
+  const byKey = new Map(
+    vocabulary.map((record) => [getVocabularyMergeKey(record), record]),
+  );
   let changed = false;
 
   for (const explanation of explanations) {
@@ -263,7 +304,11 @@ async function mergeVocabularyWithLegacyExplanations(
     }
 
     if (!existing.translation && record.translation) {
-      const next = { ...existing, translation: record.translation, updatedAt: new Date().toISOString() };
+      const next = {
+        ...existing,
+        translation: record.translation,
+        updatedAt: new Date().toISOString(),
+      };
       byKey.set(key, next);
       await putInStore("vocabulary", next);
       changed = true;
@@ -273,17 +318,21 @@ async function mergeVocabularyWithLegacyExplanations(
   return changed ? [...byKey.values()] : vocabulary;
 }
 
-async function upsertVocabularyFromExplanation(explanation: ExplanationRecord): Promise<VocabularyRecord> {
+async function upsertVocabularyFromExplanation(
+  explanation: ExplanationRecord,
+): Promise<VocabularyRecord> {
   const next = vocabularyFromExplanation(explanation);
   const records = await getAllFromStore<VocabularyRecord>("vocabulary");
-  const existing = records.find((record) => getVocabularyMergeKey(record) === getVocabularyMergeKey(next));
+  const existing = records.find(
+    (record) => getVocabularyMergeKey(record) === getVocabularyMergeKey(next),
+  );
   const record = existing
     ? {
         ...existing,
         sourceTitle: explanation.sourceTitle,
         anchor: explanation.anchor ?? existing.anchor,
         translation: explanation.result,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       }
     : next;
 
@@ -291,7 +340,9 @@ async function upsertVocabularyFromExplanation(explanation: ExplanationRecord): 
   return record;
 }
 
-function vocabularyFromExplanation(explanation: ExplanationRecord): VocabularyRecord {
+function vocabularyFromExplanation(
+  explanation: ExplanationRecord,
+): VocabularyRecord {
   return {
     id: explanation.id,
     word: explanation.selectedText,
@@ -302,7 +353,7 @@ function vocabularyFromExplanation(explanation: ExplanationRecord): VocabularyRe
     anchor: explanation.anchor,
     translation: explanation.result,
     createdAt: explanation.createdAt,
-    updatedAt: explanation.createdAt
+    updatedAt: explanation.createdAt,
   };
 }
 
@@ -310,21 +361,19 @@ function getVocabularyMergeKey(record: VocabularyRecord): string {
   return [
     record.normalizedWord || record.word.trim().toLowerCase(),
     safeNormalizeUrlKey(record.sourceUrl),
-    record.contextSentence.trim().replace(/\s+/g, " ")
+    record.contextSentence.trim().replace(/\s+/g, " "),
   ].join("\n");
 }
 
 function getTargetLanguageName(settings: AppSettings): string {
-  return TARGET_LANGUAGE_NAMES[settings.ui.language] ?? TARGET_LANGUAGE_NAMES.en;
+  return (
+    TARGET_LANGUAGE_NAMES[settings.ui.language] ?? TARGET_LANGUAGE_NAMES.en
+  );
 }
 
 function isLlmConfigured(settings: AppSettings): boolean {
   const llm = getEffectiveLlmConfig(settings.llm);
-  return Boolean(
-    llm.baseUrl.trim() &&
-      llm.apiKey.trim() &&
-      llm.model.trim()
-  );
+  return Boolean(llm.baseUrl.trim() && llm.apiKey.trim() && llm.model.trim());
 }
 
 function safeNormalizeUrlKey(sourceUrl: string): string {
@@ -340,6 +389,7 @@ function isWordLikeSelection(value: string): boolean {
 }
 
 async function callOpenAiCompatibleApi(input: {
+  provider: LlmProvider;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -357,8 +407,23 @@ async function callOpenAiCompatibleApi(input: {
   const prompt = renderPromptTemplate(input.promptTemplate, {
     task: buildTask(input.selectionKind, input.targetLanguage),
     selection: input.selectedText,
-    context: input.context
+    context: input.context,
   });
+  const requestBody: OpenAiCompatibleChatRequestBody = {
+    model: input.model,
+    temperature: input.temperature,
+    messages: [
+      {
+        role: "system",
+        content: "Follow the user's prompt template exactly. Return Markdown.",
+      },
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+    ...getReasoningDisabledParams(input.provider, input.model),
+  };
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -366,22 +431,9 @@ async function callOpenAiCompatibleApi(input: {
       signal: controller.signal,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${input.apiKey}`
+        Authorization: `Bearer ${input.apiKey}`,
       },
-      body: JSON.stringify({
-        model: input.model,
-        temperature: input.temperature,
-        messages: [
-          {
-            role: "system",
-            content: "Follow the user's prompt template exactly. Return Markdown."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ]
-      })
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -400,9 +452,82 @@ async function callOpenAiCompatibleApi(input: {
   }
 }
 
+type OpenAiCompatibleChatRequestBody = {
+  model: string;
+  temperature: number;
+  messages: Array<{ role: "system" | "user"; content: string }>;
+} & Record<string, unknown>;
+
+function getReasoningDisabledParams(
+  provider: LlmProvider,
+  model: string,
+): Record<string, unknown> {
+  if (provider === "openrouter" && canDisableOpenRouterReasoning(model)) {
+    return { reasoning: { effort: "none", exclude: true } };
+  }
+
+  if (provider === "gemini" && canDisableGeminiThinking(model)) {
+    return { reasoning_effort: "none" };
+  }
+
+  if (provider === "aliyun" && canDisableAliyunThinking(model)) {
+    return { enable_thinking: false };
+  }
+
+  if (provider === "zhipu" && canDisableZhipuThinking(model)) {
+    return { thinking: { type: "disabled" } };
+  }
+
+  if (provider === "deepseek" && canDisableDeepSeekThinking(model)) {
+    return { thinking: { type: "disabled" } };
+  }
+
+  return {};
+}
+
+function canDisableOpenRouterReasoning(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return !(
+    normalized.includes("gemini-3") || normalized.includes("gemini-2.5-pro")
+  );
+}
+
+function canDisableGeminiThinking(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return normalized.includes("gemini-2.5") && !normalized.includes("pro");
+}
+
+function canDisableAliyunThinking(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return !(
+    normalized.includes("thinking") ||
+    normalized.includes("deepseek-r1") ||
+    normalized.includes("qwq") ||
+    normalized.startsWith("minimax-m")
+  );
+}
+
+function canDisableZhipuThinking(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return (
+    normalized.startsWith("glm-4.5") ||
+    normalized.startsWith("glm-4.6") ||
+    normalized.startsWith("glm-4.7") ||
+    normalized.startsWith("glm-5")
+  );
+}
+
+function canDisableDeepSeekThinking(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return (
+    normalized.includes("deepseek-v4-pro") ||
+    normalized.includes("deepseek-v4-flash")
+  );
+}
+
 function renderPromptTemplate(
   template: string,
-  values: { task: string; selection: string; context: string }
+  values: { task: string; selection: string; context: string },
 ): string {
   return template
     .replaceAll("{{task}}", values.task)
@@ -410,9 +535,11 @@ function renderPromptTemplate(
     .replaceAll("{{context}}", values.context);
 }
 
-function buildTask(selectionKind: "word" | "text", targetLanguage: string): string {
-  const languageInstruction =
-    `Infer the source language for translation or word lookup from the context; default to English when uncertain. The target language is ${targetLanguage}.`;
+function buildTask(
+  selectionKind: "word" | "text",
+  targetLanguage: string,
+): string {
+  const languageInstruction = `Infer the source language for translation or word lookup from the context; default to English when uncertain. The target language is ${targetLanguage}.`;
   const taskInstruction =
     selectionKind === "word"
       ? "Explain the selected word in context."
@@ -425,29 +552,39 @@ async function getPronunciation(word: string): Promise<PronunciationResult> {
   const apiKey = settings.pronunciation.merriamWebsterApiKey.trim();
 
   if (apiKey) {
-    const result = await getMerriamWebsterAudio(word, apiKey).catch(() => undefined);
+    const result = await getMerriamWebsterAudio(word, apiKey).catch(
+      () => undefined,
+    );
     if (result) return result;
   }
 
-  const freeDictionary = await getFreeDictionaryAudio(word).catch(() => undefined);
+  const freeDictionary = await getFreeDictionaryAudio(word).catch(
+    () => undefined,
+  );
   return freeDictionary ?? { provider: "speech-synthesis" };
 }
 
-async function getMerriamWebsterAudio(word: string, apiKey: string): Promise<PronunciationResult | undefined> {
+async function getMerriamWebsterAudio(
+  word: string,
+  apiKey: string,
+): Promise<PronunciationResult | undefined> {
   const response = await fetch(
-    `https://www.dictionaryapi.com/api/v3/references/collegiate/json/${encodeURIComponent(word)}?key=${encodeURIComponent(apiKey)}`
+    `https://www.dictionaryapi.com/api/v3/references/collegiate/json/${encodeURIComponent(word)}?key=${encodeURIComponent(apiKey)}`,
   );
   if (!response.ok) return undefined;
 
-  const data = (await response.json()) as Array<{ hwi?: { prs?: Array<{ sound?: { audio?: string } }> } }>;
-  const audio = data.find((entry) => entry.hwi?.prs?.some((pronunciation) => pronunciation.sound?.audio))?.hwi
-    ?.prs?.[0]?.sound?.audio;
+  const data = (await response.json()) as Array<{
+    hwi?: { prs?: Array<{ sound?: { audio?: string } }> };
+  }>;
+  const audio = data.find((entry) =>
+    entry.hwi?.prs?.some((pronunciation) => pronunciation.sound?.audio),
+  )?.hwi?.prs?.[0]?.sound?.audio;
   if (!audio) return undefined;
 
   const subdirectory = getMerriamWebsterAudioSubdirectory(audio);
   return {
     provider: "merriam-webster",
-    audioUrl: `https://media.merriam-webster.com/audio/prons/en/us/mp3/${subdirectory}/${audio}.mp3`
+    audioUrl: `https://media.merriam-webster.com/audio/prons/en/us/mp3/${subdirectory}/${audio}.mp3`,
   };
 }
 
@@ -458,11 +595,17 @@ function getMerriamWebsterAudioSubdirectory(audio: string): string {
   return first && /^[a-z]$/.test(first) ? first : "number";
 }
 
-async function getFreeDictionaryAudio(word: string): Promise<PronunciationResult | undefined> {
-  const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+async function getFreeDictionaryAudio(
+  word: string,
+): Promise<PronunciationResult | undefined> {
+  const response = await fetch(
+    `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
+  );
   if (!response.ok) return undefined;
 
-  const data = (await response.json()) as Array<{ phonetics?: Array<{ audio?: string }> }>;
+  const data = (await response.json()) as Array<{
+    phonetics?: Array<{ audio?: string }>;
+  }>;
   const audioUrl = data
     .flatMap((entry) => entry.phonetics ?? [])
     .map((phonetic) => phonetic.audio)

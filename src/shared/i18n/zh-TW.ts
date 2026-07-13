@@ -66,6 +66,10 @@ export const zhTW: Messages = {
       allColors: "全部顏色",
       reset: "重置",
     },
+    empty: {
+      highlights: "暫無標記資料。",
+      vocabulary: "暫無生字資料。",
+    },
     actions: {
       copyHighlightedText: "複製標記文字",
       deleteHighlight: "刪除標記",
@@ -92,18 +96,22 @@ export const zhTW: Messages = {
     settings: {
       llm: "大型語言模型",
       llmCostNotice:
-        "注意：呼叫大型語言模型翻譯或查詞可能產生費用，由所選模型廠商決定，請妥善設定並保存 Key 資訊。",
+        "注意：呼叫大型語言模型翻譯或查詞可能產生費用，由所選模型廠商決定和收取，請妥善設定並保存 Key 資訊。",
       provider: "模型廠商",
-      providerHelp: "翻譯本身的成本消耗較低，建議以接口回應速度作為第一考量因素。",
+      providerHelp:
+        "翻譯本身的成本消耗較低，建議以接口回應速度作為第一考量因素。",
       customProvider: "自訂",
       providerDescriptions: {
         zhipu: "有普惠模型可免費使用，但速度偏慢。",
         gemini: "有一定量的免費額度，官方定期重置，完全夠用。",
-        openrouter: "有免費模型可供使用，可使用 openrouter/free 或到官方市場上選擇。",
-        deepseek: "官方暫無免費額度，但是 v4 flash 非常便宜，30 次呼叫約 2 分錢。",
+        openrouter:
+          "有免費模型可供使用，可使用 openrouter/free 或到官方市場上選擇。",
+        deepseek:
+          "官方暫無免費額度，但是 v4 flash 非常便宜，30 次呼叫約 2 分錢。",
         aliyun: "新使用者有免費額度，免費額度用完後開始計費。",
         volcengine: "新使用者有免費額度，免費額度用完後開始計費。",
-        custom: "根據自己的資源和需求選擇，滿足 OpenAI API 規範的接口都可以使用，本機模型也可以。",
+        custom:
+          "根據自己的資源和需求選擇，滿足 OpenAI API 規範的接口都可以使用，本機模型也可以。",
       },
       baseUrl: "Base URL",
       apiKey: "API Key",
@@ -117,7 +125,8 @@ export const zhTW: Messages = {
       behavior: "行為",
       autoCloseLookupPanelOnCopy: "查詞彈窗複製後自動關閉",
       language: "語言",
-      languageHelp: "所選語言為介面語言，同時為大型語言模型翻譯的目標語言。",
+      languageHelp:
+        "所選語言為介面語言，同時為大型語言模型翻譯的目標語言，建議開始使用時確定好之後就不要再修改。",
       pronunciation: "發音",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "偏好",
@@ -160,7 +169,7 @@ export const zhTW: Messages = {
     about: {
       plan: {
         title: "Plan",
-        body: "後續計畫增加基於遺忘曲線的生字複習計畫，讓臨時查詞沉澱為可持續複習的長期記憶。",
+        body: "後續計畫增加基於遺忘曲線的生字複習計畫，讓臨時查詞沉澱為可持續複習的長期記憶，並支援資料在不同裝置之間同步。",
       },
       releases: {
         title: "Releases",

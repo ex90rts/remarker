@@ -66,6 +66,10 @@ export const es: Messages = {
       allColors: "Todos los colores",
       reset: "Restablecer",
     },
+    empty: {
+      highlights: "No hay resaltados para mostrar.",
+      vocabulary: "No hay elementos de vocabulario para mostrar.",
+    },
     actions: {
       copyHighlightedText: "Copiar texto resaltado",
       deleteHighlight: "Eliminar resaltado",
@@ -120,7 +124,7 @@ export const es: Messages = {
         "Cerrar automáticamente el popup de búsqueda después de copiar",
       language: "Idioma",
       languageHelp:
-        "El idioma seleccionado se usa para la interfaz y como idioma de destino de traducción del LLM.",
+        "El idioma seleccionado se usa para la interfaz y como idioma de destino de traducción del LLM. Se recomienda elegirlo al empezar a usar la extensión y no cambiarlo después.",
       pronunciation: "Pronunciación",
       merriamWebsterApiKey: "Merriam-Webster API Key",
       preferences: "Preferencias",
@@ -167,7 +171,7 @@ export const es: Messages = {
     about: {
       plan: {
         title: "Plan",
-        body: "La próxima función planificada es un calendario de repaso de vocabulario basado en la curva del olvido, para convertir búsquedas rápidas en memoria a largo plazo.",
+        body: "Las próximas funciones planificadas son un calendario de repaso de vocabulario basado en la curva del olvido, para convertir búsquedas rápidas en memoria a largo plazo, y sincronización de datos entre dispositivos.",
       },
       releases: {
         title: "Releases",

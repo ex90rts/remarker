@@ -1,0 +1,7 @@
+title: Remarker
+description: Site for the Remarker browser extension.
+lang: en
+markdown: kramdown
+plugins: []
+exclude:
+  - README.md

@@ -14,6 +14,7 @@ import {
   SCHEMA_VERSION,
   createDefaultLlmProviderConfigs,
   getDefaultPromptTemplate,
+  isDefaultPromptTemplate,
   normalizeLlmProvider,
   normalizeLlmProviderConfig,
   normalizeRecordsPageSize
@@ -177,7 +178,11 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
     providers,
     temperature: incomingLlm?.temperature ?? DEFAULT_SETTINGS.llm.temperature,
     timeoutMs: incomingLlm?.timeoutMs ?? DEFAULT_SETTINGS.llm.timeoutMs,
-    promptTemplate: incomingLlm?.promptTemplate ?? getDefaultPromptTemplate()
+    promptTemplate:
+      incomingLlm?.promptTemplate &&
+      !isDefaultPromptTemplate(incomingLlm.promptTemplate)
+        ? incomingLlm.promptTemplate
+        : getDefaultPromptTemplate(language)
   };
 
   return {

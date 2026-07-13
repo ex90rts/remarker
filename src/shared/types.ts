@@ -173,11 +173,27 @@ export interface StartupCache {
   schemaVersion: number;
 }
 
-const DEFAULT_PROMPT_TEMPLATE =
-  "You are a knowledgeable, trend-savvy linguist. Below, you'll help a reader complete the following task.\n\nTask:\n{{task}}\n\nSelection:\n{{selection}}\n\nContext:\n{{context}}\n\nRequirements:\n- Answer in the target language using clear, natural wording.\n- Stay grounded in the provided context.\n- If the task is word explanation, include the contextual meaning, part of speech when useful, and reusable expression notes.\n- If the task is translation, translate the selected text into the target language according to the context and briefly explain key expressions when useful.\n- Must be returned in Markdown format.";
+const DEFAULT_PROMPT_TEMPLATE_EN =
+  "You are a knowledgeable, trend-savvy linguist. Below, you'll help a reader complete the following task.\n\nTask:\n{{task}}\n\nSelection:\n{{selection}}\n\nContext:\n{{context}}\n\nRequirements:\n- The language used in the response must match the target language specified in the task.\n- If the task is translation, complete the translation of the selected content based on context, then provide a context-based analysis along with high-frequency vocabulary and common phrase extraction. The returned content must follow this exact order with no extraneous content: Best Translation, Context Analysis, High-Frequency Vocabulary and Common Phrases.\n- If the task is word lookup, determine the best meaning of the selected content based on context analysis, then provide a context-based analysis along with common usage expansion. The returned content must follow this exact order with no extraneous content: Current Meaning, Context Analysis, Additional Meanings, Common Usage and Example Sentences.\n- The returned content must be in Markdown source format.";
 
-export function getDefaultPromptTemplate(): string {
-  return DEFAULT_PROMPT_TEMPLATE;
+const DEFAULT_PROMPT_TEMPLATE_ZH_CN =
+  "你是一位知识丰富、熟悉流行表达的语言学专家。接下来请帮助读者完成以下任务。\n\n任务：\n{{task}}\n\n选中内容：\n{{selection}}\n\n上下文：\n{{context}}\n\n要求：\n- 回复语言必须符合任务中指定的目标语言。\n- 如果任务是翻译，请结合上下文完整翻译选中内容，然后给出基于上下文的解析，并提取高频词汇和常用短语。返回内容必须严格按以下顺序组织，不要添加无关内容：最佳翻译、上下文解析、高频词汇和常用短语。\n- 如果任务是查词，请结合上下文判断选中内容在当前语境中的最佳含义，然后给出基于上下文的解析，并补充常见用法扩展。返回内容必须严格按以下顺序组织，不要添加无关内容：当前含义、上下文解析、其他含义、常见用法和例句。\n- 返回内容必须是 Markdown 源码格式。";
+
+function shouldUseChineseDefaultPrompt(language?: SupportedLanguage): boolean {
+  return language === "zh-CN" || language === "zh-TW";
+}
+
+export function getDefaultPromptTemplate(language?: SupportedLanguage): string {
+  return shouldUseChineseDefaultPrompt(language)
+    ? DEFAULT_PROMPT_TEMPLATE_ZH_CN
+    : DEFAULT_PROMPT_TEMPLATE_EN;
+}
+
+export function isDefaultPromptTemplate(promptTemplate: string): boolean {
+  return (
+    promptTemplate === DEFAULT_PROMPT_TEMPLATE_EN ||
+    promptTemplate === DEFAULT_PROMPT_TEMPLATE_ZH_CN
+  );
 }
 
 export function normalizeRecordsPageSize(value: unknown): RecordsPageSize {
@@ -246,7 +262,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     providers: createDefaultLlmProviderConfigs(),
     temperature: 0.2,
     timeoutMs: 30000,
-    promptTemplate: DEFAULT_PROMPT_TEMPLATE,
+    promptTemplate: getDefaultPromptTemplate("en"),
   },
   pronunciation: {
     merriamWebsterApiKey: "",
