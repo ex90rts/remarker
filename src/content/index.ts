@@ -216,6 +216,7 @@ const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
 let shadowRoot: ShadowRoot;
 let toolbar: HTMLDivElement;
 let panel: HTMLDivElement;
+let overlayHost: HTMLDivElement | undefined;
 let currentSelection: SelectionState | undefined;
 let currentUrlKey = normalizeUrlKey(location.href);
 let panelPinned = false;
@@ -225,24 +226,16 @@ let transientTimer: number | undefined;
 let lookupPanelTimer: number | undefined;
 let t: ContentMessages = getContentMessages(detectBrowserLanguage());
 let autoCloseLookupPanelOnCopy = false;
+let extensionActive = false;
+const selectionChangeListener = debounce(handleSelectionChange, 120);
 
 init().catch((error) => {
   console.warn("[Remarker] init failed", error);
 });
 
 async function init(): Promise<void> {
-  if (!(await isEnabledForCurrentPage())) return;
-
-  await loadMessages();
-  createOverlay();
-  await restoreHighlights();
-  await restoreLookupExplanations();
-
-  document.addEventListener(
-    "selectionchange",
-    debounce(handleSelectionChange, 120),
-  );
-  document.addEventListener("mousedown", handleDocumentMouseDown, true);
+  chrome.storage.onChanged.addListener(handleStorageChange);
+  await syncEnabledState();
 }
 
 async function loadMessages(): Promise<void> {
@@ -302,7 +295,54 @@ async function isEnabledForCurrentPage(): Promise<boolean> {
   );
 }
 
+async function activateExtension(): Promise<void> {
+  if (extensionActive) return;
+
+  await loadMessages();
+  createOverlay();
+  await restoreHighlights();
+  await restoreLookupExplanations();
+  document.addEventListener("selectionchange", selectionChangeListener);
+  document.addEventListener("mousedown", handleDocumentMouseDown, true);
+  extensionActive = true;
+}
+
+function deactivateExtension(): void {
+  if (!extensionActive) return;
+
+  document.removeEventListener("selectionchange", selectionChangeListener);
+  document.removeEventListener("mousedown", handleDocumentMouseDown, true);
+  hideToolbar();
+  removeRemarkerDecorations();
+  overlayHost?.remove();
+  overlayHost = undefined;
+  currentSelection = undefined;
+  panelPinned = false;
+  toolbarPinned = false;
+  clearTransientTimer();
+  clearLookupPanelHideTimer();
+  extensionActive = false;
+}
+
+async function syncEnabledState(): Promise<void> {
+  if (await isEnabledForCurrentPage()) {
+    await activateExtension();
+  } else {
+    deactivateExtension();
+  }
+}
+
+function handleStorageChange(
+  changes: Record<string, chrome.storage.StorageChange>,
+  areaName: string,
+): void {
+  if (areaName !== "local") return;
+  if (!changes.globalEnabled && !changes.disabledSites) return;
+  void syncEnabledState();
+}
+
 function createOverlay(): void {
+  overlayHost?.remove();
   const host = document.createElement("div");
   host.id = "remarker-root";
   host.style.position = "fixed";
@@ -310,6 +350,7 @@ function createOverlay(): void {
   host.style.pointerEvents = "none";
   host.style.zIndex = "2147483647";
   document.documentElement.append(host);
+  overlayHost = host;
 
   shadowRoot = host.attachShadow({ mode: "open" });
   const style = document.createElement("style");
@@ -1414,6 +1455,7 @@ function getExplanationPanelTitle(isLoading: boolean): string {
 }
 
 function hideToolbar(): void {
+  if (!toolbar || !panel) return;
   panelPinned = false;
   toolbarPinned = false;
   clearTransientTimer();
@@ -1421,6 +1463,26 @@ function hideToolbar(): void {
   toolbar.classList.remove("visible");
   toolbar.classList.remove("success");
   panel.classList.remove("visible");
+}
+
+function removeRemarkerDecorations(): void {
+  const elements = [
+    ...document.querySelectorAll<HTMLElement>(`.${HIGHLIGHT_CLASS}`),
+    ...document.querySelectorAll<HTMLElement>(`.${LOOKUP_CLASS}`),
+  ].reverse();
+
+  for (const element of elements) {
+    unwrapElement(element);
+  }
+}
+
+function unwrapElement(element: HTMLElement): void {
+  const parent = element.parentNode;
+  if (!parent) return;
+  while (element.firstChild) {
+    parent.insertBefore(element.firstChild, element);
+  }
+  parent.removeChild(element);
 }
 
 function handleDocumentMouseDown(event: MouseEvent): void {

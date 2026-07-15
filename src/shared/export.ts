@@ -1,12 +1,27 @@
-import type { HighlightRecord, VocabularyRecord } from "./types";
+import type {
+  FootprintRecord,
+  HighlightRecord,
+  VocabularyRecord,
+} from "./types";
 
 export function createBackupJson(input: {
   settings: unknown;
+  footprints: FootprintRecord[];
   highlights: HighlightRecord[];
   vocabulary: VocabularyRecord[];
   includeSensitive: boolean;
 }): string {
   const settings = structuredClone(input.settings) as Record<string, unknown>;
+  const footprints = input.footprints.map((record) => ({
+    urlKey: record.urlKey,
+    sourceUrl: record.sourceUrl,
+    sourceTitle: record.sourceTitle,
+    siteName: record.siteName,
+    starred: record.starred,
+    archivedAt: record.archivedAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  }));
 
   if (!input.includeSensitive && typeof settings.llm === "object" && settings.llm) {
     const llm = settings.llm as Record<string, unknown>;
@@ -27,8 +42,9 @@ export function createBackupJson(input: {
   return JSON.stringify(
     {
       exportedAt: new Date().toISOString(),
-      schemaVersion: 1,
+      schemaVersion: 2,
       settings,
+      footprints,
       highlights: input.highlights,
       vocabulary: input.vocabulary
     },

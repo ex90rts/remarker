@@ -9,6 +9,7 @@ export const es: Messages = {
     copied: "Copiado",
     copy: "Copiar",
     cancel: "Cancelar",
+    archive: "Archivar",
     delete: "Eliminar",
     empty: "Vacío",
     openSource: "Abrir fuente",
@@ -17,9 +18,11 @@ export const es: Messages = {
     loading: "Cargando",
     failed: "Error",
     noSite: "Sin sitio",
-    enableExtension: "Activar extensión",
-    enableCurrentSite: "Activar sitio actual",
-    openManagementPage: "Abrir página de gestión",
+    enableExtension: "Resaltado y búsqueda de palabras globales",
+    enableCurrentSite: "Resaltado y búsqueda de palabras en este sitio",
+    addFootprint: "Agregar a huellas",
+    addedFootprint: "Ya está en huellas",
+    managePage: "Consola de gestión",
   },
   content: {
     copy: "Copiar",
@@ -46,6 +49,7 @@ export const es: Messages = {
   },
   options: {
     tabs: {
+      footprints: "Huellas",
       highlights: "Resaltados",
       vocabulary: "Vocabulario",
       explanations: "Registros de búsqueda",
@@ -53,6 +57,11 @@ export const es: Messages = {
       about: "Acerca de",
     },
     columns: {
+      pageTitle: "Título de la página",
+      site: "Sitio",
+      browsedAt: "Lectura",
+      highlightCount: "Resaltados",
+      lookupCount: "Vocabulario",
       highlightedText: "Texto resaltado",
       source: "Fuente",
       status: "Estado",
@@ -64,13 +73,18 @@ export const es: Messages = {
     },
     filters: {
       allColors: "Todos los colores",
+      starredOnly: "Solo con estrella",
       reset: "Restablecer",
     },
     empty: {
+      footprints: "No hay huellas para mostrar.",
       highlights: "No hay resaltados para mostrar.",
       vocabulary: "No hay elementos de vocabulario para mostrar.",
     },
     actions: {
+      starFootprint: "Marcar huella",
+      unstarFootprint: "Quitar estrella",
+      archiveFootprint: "Archivar huella",
       copyHighlightedText: "Copiar texto resaltado",
       deleteHighlight: "Eliminar resaltado",
       expandTranslation: "Expandir explicación",
@@ -88,6 +102,8 @@ export const es: Messages = {
       restoreDefault: "Restaurar valor predeterminado",
     },
     confirmations: {
+      archiveFootprint:
+        "¿Archivar esta huella? Se ocultará de la lista actual.",
       deleteHighlight: "¿Eliminar este resaltado?",
       deleteVocabularyItem: "¿Eliminar este elemento de vocabulario?",
       deleteExplanation: "¿Eliminar este registro de búsqueda?",
@@ -98,22 +114,31 @@ export const es: Messages = {
       llmCostNotice:
         "Nota: usar un LLM para traducir o consultar palabras puede generar costes, según el proveedor elegido. Configura y guarda tu clave con cuidado.",
       provider: "Proveedor",
-      providerHelp: "La traducción consume poco coste; prioriza la velocidad de respuesta de la API.",
+      providerHelp:
+        "La traducción consume poco coste; prioriza la velocidad de respuesta de la API.",
       customProvider: "Personalizado",
       providerDescriptions: {
-        zhipu: "Hay modelos asequibles gratuitos, aunque pueden responder más lento.",
-        gemini: "Incluye una cuota gratuita útil que Google restablece periódicamente.",
-        openrouter: "Hay modelos gratuitos; usa openrouter/free o elige uno en el marketplace.",
-        deepseek: "No tiene cuota gratuita oficial por ahora, pero v4 flash es muy barato: unos CNY 0,02 por 30 llamadas.",
-        aliyun: "Los usuarios nuevos reciben cuota gratuita; después se empieza a facturar.",
-        volcengine: "Los usuarios nuevos reciben cuota gratuita; después se empieza a facturar.",
-        custom: "Usa cualquier recurso que se ajuste a tus necesidades, incluidos modelos locales, si cumple el formato de la API de OpenAI.",
+        zhipu:
+          "Hay modelos asequibles gratuitos, aunque pueden responder más lento.",
+        gemini:
+          "Incluye una cuota gratuita útil que Google restablece periódicamente.",
+        openrouter:
+          "Hay modelos gratuitos; usa openrouter/free o elige uno en el marketplace.",
+        deepseek:
+          "No tiene cuota gratuita oficial por ahora, pero v4 flash es muy barato: unos CNY 0,02 por 30 llamadas.",
+        aliyun:
+          "Los usuarios nuevos reciben cuota gratuita; después se empieza a facturar.",
+        volcengine:
+          "Los usuarios nuevos reciben cuota gratuita; después se empieza a facturar.",
+        custom:
+          "Usa cualquier recurso que se ajuste a tus necesidades, incluidos modelos locales, si cumple el formato de la API de OpenAI.",
       },
       baseUrl: "Base URL",
       apiKey: "API Key",
       apiKeyHelp: "Esta configuración solo se guarda en tu navegador local.",
       model: "Modelo",
-      modelHelp: "Se recomiendan modelos Flash o similares para obtener respuestas más rápidas.",
+      modelHelp:
+        "Se recomiendan modelos Flash o similares para obtener respuestas más rápidas.",
       temperature: "Temperature",
       timeoutMs: "Tiempo de espera ms",
       promptTemplate: "Plantilla de prompt",
@@ -141,6 +166,9 @@ export const es: Messages = {
       settingsSaved: "Ajustes guardados.",
       jsonImported: "JSON importado.",
       dataRefreshed: "Datos actualizados.",
+      footprintStarred: "Huella marcada.",
+      footprintUnstarred: "Se quitó la estrella.",
+      footprintArchived: "Huella archivada.",
       highlightDeleted: "Resaltado eliminado.",
       vocabularyDeleted: "Elemento de vocabulario eliminado.",
       copied: "Copiado.",

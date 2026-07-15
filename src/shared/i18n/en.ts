@@ -7,6 +7,7 @@ export const en = {
     copied: "Copied",
     copy: "Copy",
     cancel: "Cancel",
+    archive: "Archive",
     delete: "Delete",
     empty: "Empty",
     openSource: "Open source",
@@ -15,9 +16,11 @@ export const en = {
     loading: "Loading",
     failed: "Failed",
     noSite: "No site",
-    enableExtension: "Enable extension",
-    enableCurrentSite: "Enable current site",
-    openManagementPage: "Open management page",
+    enableExtension: "Global page highlighting and word lookup",
+    enableCurrentSite: "Highlighting and word lookup on this site",
+    addFootprint: "Add to footprints",
+    addedFootprint: "Added to footprints",
+    managePage: "Open manage console",
   },
   content: {
     copy: "Copy",
@@ -44,6 +47,7 @@ export const en = {
   },
   options: {
     tabs: {
+      footprints: "Footprints",
       highlights: "Highlights",
       vocabulary: "Vocabulary",
       explanations: "Lookup Records",
@@ -51,6 +55,11 @@ export const en = {
       about: "About",
     },
     columns: {
+      pageTitle: "Page Title",
+      site: "Site",
+      browsedAt: "Browsed",
+      highlightCount: "Highlights",
+      lookupCount: "Vocabulary",
       highlightedText: "Highlighted Text",
       source: "Source",
       status: "Status",
@@ -62,13 +71,18 @@ export const en = {
     },
     filters: {
       allColors: "All colors",
+      starredOnly: "Starred only",
       reset: "Reset",
     },
     empty: {
+      footprints: "No footprints to show.",
       highlights: "No highlights to show.",
       vocabulary: "No vocabulary items to show.",
     },
     actions: {
+      starFootprint: "Star footprint",
+      unstarFootprint: "Unstar footprint",
+      archiveFootprint: "Archive footprint",
       copyHighlightedText: "Copy highlighted text",
       deleteHighlight: "Delete highlight",
       expandTranslation: "Expand translation",
@@ -86,6 +100,8 @@ export const en = {
       restoreDefault: "Restore default",
     },
     confirmations: {
+      archiveFootprint:
+        "Archive this footprint? It will be hidden from the current list.",
       deleteHighlight: "Delete this highlight?",
       deleteVocabularyItem: "Delete this vocabulary item?",
       deleteExplanation: "Delete this lookup record?",
@@ -96,22 +112,30 @@ export const en = {
       llmCostNotice:
         "Note: Using an LLM for translation or word lookup may incur costs, depending on the selected provider. Configure and save your key carefully.",
       provider: "Provider",
-      providerHelp: "Translation itself is low-cost, so prioritize API response speed first.",
+      providerHelp:
+        "Translation itself is low-cost, so prioritize API response speed first.",
       customProvider: "Custom",
       providerDescriptions: {
-        zhipu: "Affordable models are available for free, but responses can be slower.",
+        zhipu:
+          "Affordable models are available for free, but responses can be slower.",
         gemini: "Includes a practical free quota that Google resets regularly.",
-        openrouter: "Free models are available; use openrouter/free or choose one from the marketplace.",
-        deepseek: "No official free quota yet, but v4 flash is very inexpensive, about CNY 0.02 for 30 calls.",
-        aliyun: "New users receive free quota; billing starts after the quota is used.",
-        volcengine: "New users receive free quota; billing starts after the quota is used.",
-        custom: "Use any resource that fits your needs, including local models, as long as it follows the OpenAI API format.",
+        openrouter:
+          "Free models are available; use openrouter/free or choose one from the marketplace.",
+        deepseek:
+          "No official free quota yet, but v4 flash is very inexpensive, about CNY 0.02 for 30 calls.",
+        aliyun:
+          "New users receive free quota; billing starts after the quota is used.",
+        volcengine:
+          "New users receive free quota; billing starts after the quota is used.",
+        custom:
+          "Use any resource that fits your needs, including local models, as long as it follows the OpenAI API format.",
       },
       baseUrl: "Base URL",
       apiKey: "API Key",
       apiKeyHelp: "This configuration is stored only in your local browser.",
       model: "Model",
-      modelHelp: "Flash or similar fast models are recommended for quicker responses.",
+      modelHelp:
+        "Flash or similar fast models are recommended for quicker responses.",
       temperature: "Temperature",
       timeoutMs: "Timeout ms",
       promptTemplate: "Prompt template",
@@ -138,6 +162,9 @@ export const en = {
       settingsSaved: "Settings saved.",
       jsonImported: "JSON imported.",
       dataRefreshed: "Data refreshed.",
+      footprintStarred: "Footprint starred.",
+      footprintUnstarred: "Footprint unstarred.",
+      footprintArchived: "Footprint archived.",
       highlightDeleted: "Highlight deleted.",
       vocabularyDeleted: "Vocabulary item deleted.",
       copied: "Copied.",

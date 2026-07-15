@@ -110,6 +110,7 @@ export interface VocabularyRecord {
   id: string;
   word: string;
   normalizedWord: string;
+  urlKey?: string;
   sourceUrl: string;
   sourceTitle: string;
   contextSentence: string;
@@ -159,12 +160,30 @@ export interface ExplanationRecord {
   selectedText: string;
   context: string;
   contextHash: string;
+  urlKey?: string;
   sourceUrl: string;
   sourceTitle: string;
   anchor?: TextAnchor;
   model: string;
   result: string;
   createdAt: string;
+}
+
+export interface FootprintRecord {
+  urlKey: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  siteName: string;
+  starred: boolean;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FootprintListItem extends FootprintRecord {
+  browsedAt: string;
+  highlightCount: number;
+  lookupCount: number;
 }
 
 export interface StartupCache {
@@ -275,4 +294,4 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
 };
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;

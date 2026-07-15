@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { markdownToSafeHtml } from "../markdown";
+import { markdownToSafeHtml, stripOuterCodeFence } from "../markdown";
+
+describe("stripOuterCodeFence", () => {
+  it("removes a surrounding markdown code fence", () => {
+    expect(stripOuterCodeFence("```markdown\n# Title\n\nBody\n```")).toBe(
+      "# Title\n\nBody",
+    );
+  });
+
+  it("removes a surrounding plain code fence", () => {
+    expect(stripOuterCodeFence("```\nCurrent Meaning\n\n- sample\n```")).toBe(
+      "Current Meaning\n\n- sample",
+    );
+  });
+
+  it("keeps markdown without a surrounding code fence unchanged", () => {
+    expect(stripOuterCodeFence("## Heading\n\nParagraph")).toBe(
+      "## Heading\n\nParagraph",
+    );
+  });
+});
 
 describe("markdownToSafeHtml", () => {
   it("renders common markdown blocks", () => {

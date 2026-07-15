@@ -1,6 +1,8 @@
 import type {
   AppSettings,
   ExplanationRecord,
+  FootprintListItem,
+  FootprintRecord,
   HighlightColor,
   HighlightRecord,
   HighlightStatus,
@@ -12,12 +14,16 @@ export type RuntimeMessage =
   | { type: "GET_HIGHLIGHTS_FOR_URL"; urlKey: string }
   | { type: "GET_WORD_EXPLANATIONS_FOR_URL"; urlKey: string }
   | { type: "GET_VOCABULARY_FOR_URL"; urlKey: string }
+  | { type: "GET_FOOTPRINT"; sourceUrl: string }
+  | { type: "ADD_FOOTPRINT"; sourceUrl: string; sourceTitle: string }
   | { type: "SAVE_HIGHLIGHT"; record: HighlightRecord }
   | { type: "UPDATE_HIGHLIGHT_STATUS"; id: string; status: HighlightStatus }
   | { type: "UPDATE_HIGHLIGHT_COLOR"; id: string; color: HighlightColor }
   | { type: "DELETE_HIGHLIGHT"; id: string }
   | { type: "SAVE_VOCABULARY"; record: VocabularyRecord }
   | { type: "DELETE_VOCABULARY"; id: string }
+  | { type: "SET_FOOTPRINT_STAR"; urlKey: string; starred: boolean }
+  | { type: "ARCHIVE_FOOTPRINT"; urlKey: string }
   | {
       type: "EXPLAIN_SELECTION";
       selectionKind: "word" | "text";
@@ -40,6 +46,7 @@ export type RuntimeMessage =
         highlights?: HighlightRecord[];
         vocabulary?: VocabularyRecord[];
         explanations?: ExplanationRecord[];
+        footprints?: FootprintRecord[];
       };
     }
   | { type: "DELETE_EXPLANATION"; id: string }
@@ -51,6 +58,7 @@ export interface PronunciationResult {
 }
 
 export interface ListAllDataResult {
+  footprints: FootprintListItem[];
   highlights: HighlightRecord[];
   vocabulary: VocabularyRecord[];
   settings: AppSettings;

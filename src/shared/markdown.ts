@@ -1,3 +1,13 @@
+export function stripOuterCodeFence(markdown: string): string {
+  let current = markdown.trim();
+
+  while (true) {
+    const match = /^```[^\S\n]*([^\n`]*)?\n([\s\S]*?)\n```$/.exec(current);
+    if (!match) return current;
+    current = match[2].trim();
+  }
+}
+
 export function markdownToSafeHtml(markdown: string): string {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];

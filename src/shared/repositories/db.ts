@@ -1,6 +1,7 @@
 import type {
   AppSettings,
   ExplanationRecord,
+  FootprintRecord,
   HighlightRecord,
   LlmProvider,
   LlmProviderConfig,
@@ -22,7 +23,13 @@ import {
 
 const DB_NAME = "remarker";
 
-type StoreName = "settings" | "highlights" | "vocabulary" | "explanations" | "siteSettings";
+type StoreName =
+  | "settings"
+  | "highlights"
+  | "vocabulary"
+  | "explanations"
+  | "footprints"
+  | "siteSettings";
 
 let dbPromise: Promise<IDBDatabase> | undefined;
 
@@ -34,28 +41,49 @@ export function openRemarkerDb(): Promise<IDBDatabase> {
 
     request.onupgradeneeded = () => {
       const db = request.result;
+      const transaction = request.transaction;
 
       if (!db.objectStoreNames.contains("settings")) {
         db.createObjectStore("settings", { keyPath: "key" });
       }
 
-      if (!db.objectStoreNames.contains("highlights")) {
-        const store = db.createObjectStore("highlights", { keyPath: "id" });
-        store.createIndex("urlKey", "urlKey", { unique: false });
-        store.createIndex("createdAt", "createdAt", { unique: false });
-        store.createIndex("status", "status", { unique: false });
+      const highlightStore = db.objectStoreNames.contains("highlights")
+        ? transaction?.objectStore("highlights")
+        : db.createObjectStore("highlights", { keyPath: "id" });
+      if (highlightStore) {
+        ensureIndex(highlightStore, "urlKey", "urlKey", { unique: false });
+        ensureIndex(highlightStore, "createdAt", "createdAt", { unique: false });
+        ensureIndex(highlightStore, "status", "status", { unique: false });
       }
 
-      if (!db.objectStoreNames.contains("vocabulary")) {
-        const store = db.createObjectStore("vocabulary", { keyPath: "id" });
-        store.createIndex("normalizedWord", "normalizedWord", { unique: false });
-        store.createIndex("createdAt", "createdAt", { unique: false });
+      const vocabularyStore = db.objectStoreNames.contains("vocabulary")
+        ? transaction?.objectStore("vocabulary")
+        : db.createObjectStore("vocabulary", { keyPath: "id" });
+      if (vocabularyStore) {
+        ensureIndex(vocabularyStore, "normalizedWord", "normalizedWord", {
+          unique: false,
+        });
+        ensureIndex(vocabularyStore, "urlKey", "urlKey", { unique: false });
+        ensureIndex(vocabularyStore, "createdAt", "createdAt", { unique: false });
       }
 
-      if (!db.objectStoreNames.contains("explanations")) {
-        const store = db.createObjectStore("explanations", { keyPath: "id" });
-        store.createIndex("cacheKey", "cacheKey", { unique: true });
-        store.createIndex("createdAt", "createdAt", { unique: false });
+      const explanationStore = db.objectStoreNames.contains("explanations")
+        ? transaction?.objectStore("explanations")
+        : db.createObjectStore("explanations", { keyPath: "id" });
+      if (explanationStore) {
+        ensureIndex(explanationStore, "cacheKey", "cacheKey", { unique: true });
+        ensureIndex(explanationStore, "urlKey", "urlKey", { unique: false });
+        ensureIndex(explanationStore, "createdAt", "createdAt", { unique: false });
+      }
+
+      const footprintStore = db.objectStoreNames.contains("footprints")
+        ? transaction?.objectStore("footprints")
+        : db.createObjectStore("footprints", { keyPath: "urlKey" });
+      if (footprintStore) {
+        ensureIndex(footprintStore, "starred", "starred", { unique: false });
+        ensureIndex(footprintStore, "archivedAt", "archivedAt", { unique: false });
+        ensureIndex(footprintStore, "createdAt", "createdAt", { unique: false });
+        ensureIndex(footprintStore, "updatedAt", "updatedAt", { unique: false });
       }
 
       if (!db.objectStoreNames.contains("siteSettings")) {
@@ -74,6 +102,17 @@ function tx(storeName: StoreName, mode: IDBTransactionMode): Promise<IDBObjectSt
   return openRemarkerDb().then((db) => db.transaction(storeName, mode).objectStore(storeName));
 }
 
+function ensureIndex(
+  store: IDBObjectStore,
+  name: string,
+  keyPath: string,
+  options?: IDBIndexParameters,
+) {
+  if (!store.indexNames.contains(name)) {
+    store.createIndex(name, keyPath, options);
+  }
+}
+
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onerror = () => reject(request.error);
@@ -84,6 +123,14 @@ function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
 export async function getAllFromStore<T>(storeName: StoreName): Promise<T[]> {
   const store = await tx(storeName, "readonly");
   return requestToPromise<T[]>(store.getAll());
+}
+
+export async function getFromStore<T>(
+  storeName: StoreName,
+  id: IDBValidKey,
+): Promise<T | undefined> {
+  const store = await tx(storeName, "readonly");
+  return requestToPromise<T | undefined>(store.get(id));
 }
 
 export async function putInStore<T>(storeName: StoreName, value: T): Promise<void> {
@@ -123,6 +170,14 @@ export async function getExplanationByCacheKey(cacheKey: string): Promise<Explan
   return requestToPromise<ExplanationRecord | undefined>(index.get(cacheKey));
 }
 
+export async function getFootprint(urlKey: string): Promise<FootprintRecord | undefined> {
+  return getFromStore<FootprintRecord>("footprints", urlKey);
+}
+
+export async function getAllFootprints(): Promise<FootprintRecord[]> {
+  return getAllFromStore<FootprintRecord>("footprints");
+}
+
 export async function getSiteSettings(): Promise<SiteSetting[]> {
   return getAllFromStore<SiteSetting>("siteSettings");
 }
@@ -133,12 +188,14 @@ export async function saveSiteSetting(setting: SiteSetting): Promise<void> {
 
 export async function importSnapshot(snapshot: {
   settings?: AppSettings;
+  footprints?: FootprintRecord[];
   highlights?: HighlightRecord[];
   vocabulary?: VocabularyRecord[];
   explanations?: ExplanationRecord[];
   siteSettings?: SiteSetting[];
 }): Promise<void> {
   if (snapshot.settings) await saveSettings(snapshot.settings);
+  for (const record of snapshot.footprints ?? []) await putInStore("footprints", record);
   for (const record of snapshot.highlights ?? []) await putInStore("highlights", record);
   for (const record of snapshot.vocabulary ?? []) await putInStore("vocabulary", record);
   for (const record of snapshot.explanations ?? []) await putInStore("explanations", record);

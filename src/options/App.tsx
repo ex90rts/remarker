@@ -28,6 +28,7 @@ import {
 } from "@mui/material";
 import {
   Bug,
+  Archive,
   ChevronDown,
   ChevronRight,
   Check,
@@ -41,6 +42,8 @@ import {
   RefreshCcw,
   RotateCcw,
   Settings,
+  Footprints,
+  Star,
   Trash2,
   Upload,
   Volume2,
@@ -80,6 +83,8 @@ import {
 import type {
   AppSettings,
   ExplanationRecord,
+  FootprintListItem,
+  FootprintRecord,
   HighlightColor,
   HighlightRecord,
   HighlightStatus,
@@ -88,8 +93,14 @@ import type {
   VocabularyRecord,
 } from "../shared/types";
 
-type TabKey = "highlights" | "vocabulary" | "settings" | "about";
+type TabKey = "footprints" | "highlights" | "vocabulary" | "settings" | "about";
 type ToastSeverity = "success" | "error";
+
+interface SourceFilterNavigation {
+  tab: "highlights" | "vocabulary";
+  keyword: string;
+  token: number;
+}
 
 interface ToastState {
   id: number;
@@ -167,6 +178,8 @@ export function App() {
   const [data, setData] = useState<ListAllDataResult | undefined>();
   const [toast, setToast] = useState<ToastState | undefined>();
   const [includeSensitive, setIncludeSensitive] = useState(false);
+  const [sourceFilterNavigation, setSourceFilterNavigation] =
+    useState<SourceFilterNavigation | undefined>();
   const language = data?.settings.ui.language ?? detectBrowserLanguage();
   const t = getMessages(language);
 
@@ -202,8 +215,21 @@ export function App() {
     window.history.replaceState(null, "", `#${nextTab}`);
   }
 
+  function switchTabWithSourceFilter(
+    nextTab: "highlights" | "vocabulary",
+    sourceTitle: string,
+  ) {
+    setSourceFilterNavigation({
+      tab: nextTab,
+      keyword: getSourceSearchKeyword(sourceTitle),
+      token: Date.now(),
+    });
+    switchTab(nextTab);
+  }
+
   const counts = useMemo(
     () => ({
+      footprints: data?.footprints.length ?? 0,
       highlights: data?.highlights.length ?? 0,
       vocabulary: data?.vocabulary.length ?? 0,
     }),
@@ -270,6 +296,12 @@ export function App() {
             sx={{ px: 2, borderBottom: 1, borderColor: "divider" }}
           >
             <Tab
+              value="footprints"
+              icon={<Footprints size={16} />}
+              iconPosition="start"
+              label={`${t.options.tabs.footprints} (${counts.footprints})`}
+            />
+            <Tab
               value="highlights"
               icon={<Highlighter size={16} />}
               iconPosition="start"
@@ -296,6 +328,16 @@ export function App() {
           </Tabs>
 
           <Box p={2}>
+            {tab === "footprints" && (
+              <FootprintsTab
+                footprints={data?.footprints ?? []}
+                recordsPageSize={recordsPageSize}
+                onChange={reload}
+                onOpenTabWithSourceFilter={switchTabWithSourceFilter}
+                runAction={runAction}
+                t={t}
+              />
+            )}
             {tab === "highlights" && (
               <HighlightsTab
                 highlights={data?.highlights ?? []}
@@ -303,6 +345,7 @@ export function App() {
                 onChange={reload}
                 runAction={runAction}
                 notify={notify}
+                sourceFilterNavigation={sourceFilterNavigation}
                 t={t}
               />
             )}
@@ -313,6 +356,7 @@ export function App() {
                 onChange={reload}
                 runAction={runAction}
                 notify={notify}
+                sourceFilterNavigation={sourceFilterNavigation}
                 t={t}
               />
             )}
@@ -338,11 +382,17 @@ export function App() {
 
 function getInitialTab(): TabKey {
   const hash = window.location.hash.replace(/^#/, "");
-  return isTabKey(hash) ? hash : "highlights";
+  return isTabKey(hash) ? hash : "footprints";
 }
 
 function isTabKey(value: string): value is TabKey {
-  return ["highlights", "vocabulary", "settings", "about"].includes(value);
+  return [
+    "footprints",
+    "highlights",
+    "vocabulary",
+    "settings",
+    "about",
+  ].includes(value);
 }
 
 function Toast({
@@ -475,12 +525,286 @@ function downloadFile(filename: string, content: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
+function FootprintsTab({
+  footprints,
+  recordsPageSize,
+  onChange,
+  onOpenTabWithSourceFilter,
+  runAction,
+  t,
+}: {
+  footprints: FootprintListItem[];
+  recordsPageSize: RecordsPageSize;
+  onChange: () => Promise<void>;
+  onOpenTabWithSourceFilter: (
+    tab: "highlights" | "vocabulary",
+    sourceTitle: string,
+  ) => void;
+  runAction: RunAction;
+  t: Messages;
+}) {
+  const [titleFilter, setTitleFilter] = useState("");
+  const [siteFilter, setSiteFilter] = useState("");
+  const [starredOnly, setStarredOnly] = useState(false);
+  const filteredFootprints = useMemo(
+    () =>
+      footprints.filter((item) => {
+        const matchesTitle = includesFuzzy(item.sourceTitle, titleFilter);
+        const matchesSite = includesFuzzy(item.siteName, siteFilter);
+        const matchesStarred = !starredOnly || item.starred;
+        return matchesTitle && matchesSite && matchesStarred;
+      }),
+    [footprints, siteFilter, starredOnly, titleFilter],
+  );
+  const { page, pageItems, setPage } = usePagedItems(
+    filteredFootprints,
+    recordsPageSize,
+  );
+  const hasFilters = Boolean(titleFilter || siteFilter || starredOnly);
+
+  function resetFilters() {
+    setTitleFilter("");
+    setSiteFilter("");
+    setStarredOnly(false);
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      <TableActionBar
+        filters={
+          <>
+            <TextField
+              size="small"
+              label={t.options.columns.pageTitle}
+              value={titleFilter}
+              onChange={(event) => setTitleFilter(event.target.value)}
+            />
+            <TextField
+              size="small"
+              label={t.options.columns.site}
+              value={siteFilter}
+              onChange={(event) => setSiteFilter(event.target.value)}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={starredOnly}
+                  onChange={(event) => setStarredOnly(event.target.checked)}
+                />
+              }
+              label={t.options.filters.starredOnly}
+              sx={{ mx: 0.5 }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<RotateCcw size={16} />}
+              disabled={!hasFilters}
+              onClick={resetFilters}
+            >
+              {t.options.filters.reset}
+            </Button>
+          </>
+        }
+        actions={
+          <Button
+            variant="outlined"
+            startIcon={<RefreshCcw size={16} />}
+            onClick={() =>
+              void runAction(onChange, t.options.notices.dataRefreshed)
+            }
+          >
+            {t.common.refresh}
+          </Button>
+        }
+      />
+      <Table size="small" sx={{ tableLayout: "fixed", width: "100%" }}>
+        <colgroup>
+          <col style={{ width: 320 }} />
+          <col style={{ width: 160 }} />
+          <col style={{ width: 190 }} />
+          <col style={{ width: 110 }} />
+          <col style={{ width: 110 }} />
+          <col style={{ width: 120 }} />
+        </colgroup>
+        <TableHead>
+          <TableRow>
+            <TableCell>{t.options.columns.pageTitle}</TableCell>
+            <TableCell>{t.options.columns.site}</TableCell>
+            <TableCell>{t.options.columns.browsedAt}</TableCell>
+            <TableCell>{t.options.columns.highlightCount}</TableCell>
+            <TableCell>{t.options.columns.lookupCount}</TableCell>
+            <TableCell align="center">{t.options.columns.actions}</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {pageItems.length === 0 ? (
+            <EmptyTableRow colSpan={6} message={t.options.empty.footprints} />
+          ) : (
+            pageItems.map((item) => (
+              <TableRow
+                key={item.urlKey}
+                sx={item.starred ? { bgcolor: "#fffbea" } : undefined}
+              >
+                <TableCell sx={{ maxWidth: 320 }}>
+                  <SourceLink
+                    href={item.sourceUrl}
+                    label={item.sourceTitle || item.sourceUrl}
+                  />
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">
+                    {item.siteName || t.common.empty}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <Typography variant="body2">
+                    {formatCreatedAt(item.browsedAt)}
+                  </Typography>
+                </TableCell>
+                <TableCell>
+                  <CountLink
+                    value={item.highlightCount}
+                    onClick={
+                      item.highlightCount > 0
+                        ? () =>
+                            onOpenTabWithSourceFilter(
+                              "highlights",
+                              item.sourceTitle || item.sourceUrl,
+                            )
+                        : undefined
+                    }
+                  />
+                </TableCell>
+                <TableCell>
+                  <CountLink
+                    value={item.lookupCount}
+                    onClick={
+                      item.lookupCount > 0
+                        ? () =>
+                            onOpenTabWithSourceFilter(
+                              "vocabulary",
+                              item.sourceTitle || item.sourceUrl,
+                            )
+                        : undefined
+                    }
+                  />
+                </TableCell>
+                <TableCell align="center">
+                  <IconButton
+                    aria-label={
+                      item.starred
+                        ? t.options.actions.unstarFootprint
+                        : t.options.actions.starFootprint
+                    }
+                    title={
+                      item.starred
+                        ? t.options.actions.unstarFootprint
+                        : t.options.actions.starFootprint
+                    }
+                    onClick={() =>
+                      void runAction(
+                        async () => {
+                          await sendMessage({
+                            type: "SET_FOOTPRINT_STAR",
+                            urlKey: item.urlKey,
+                            starred: !item.starred,
+                          });
+                          await onChange();
+                        },
+                        item.starred
+                          ? t.options.notices.footprintUnstarred
+                          : t.options.notices.footprintStarred,
+                      )
+                    }
+                    sx={
+                      item.starred
+                        ? {
+                            color: "#f59e0b",
+                            bgcolor: "#fffbeb",
+                            "&:hover": { bgcolor: "#fef3c7" },
+                          }
+                        : undefined
+                    }
+                  >
+                    <Star
+                      size={16}
+                      fill={item.starred ? "currentColor" : "none"}
+                    />
+                  </IconButton>
+                  <ConfirmArchiveIconButton
+                    label={t.options.actions.archiveFootprint}
+                    message={t.options.confirmations.archiveFootprint}
+                    onConfirm={async () => {
+                      await runAction(async () => {
+                        await sendMessage({
+                          type: "ARCHIVE_FOOTPRINT",
+                          urlKey: item.urlKey,
+                        });
+                        await onChange();
+                      }, t.options.notices.footprintArchived);
+                    }}
+                    t={t}
+                  />
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+        {filteredFootprints.length > 0 && (
+          <TableFooter>
+            <TableRow>
+              <RecordsTablePagination
+                count={filteredFootprints.length}
+                page={page}
+                recordsPageSize={recordsPageSize}
+                onPageChange={setPage}
+                colSpan={6}
+              />
+            </TableRow>
+          </TableFooter>
+        )}
+      </Table>
+    </Stack>
+  );
+}
+
+function CountLink({
+  value,
+  onClick,
+}: {
+  value: number;
+  onClick?: () => void;
+}) {
+  if (!onClick) {
+    return <Typography variant="body2">{value}</Typography>;
+  }
+
+  return (
+    <Button
+      variant="text"
+      size="small"
+      onClick={onClick}
+      sx={{
+        minWidth: "auto",
+        px: 0,
+        py: 0,
+        lineHeight: 1.2,
+        textDecoration: "underline",
+        textUnderlineOffset: "2px",
+      }}
+    >
+      {value}
+    </Button>
+  );
+}
+
 function HighlightsTab({
   highlights,
   recordsPageSize,
   onChange,
   runAction,
   notify,
+  sourceFilterNavigation,
   t,
 }: {
   highlights: HighlightRecord[];
@@ -488,6 +812,7 @@ function HighlightsTab({
   onChange: () => Promise<void>;
   runAction: RunAction;
   notify: Notify;
+  sourceFilterNavigation?: SourceFilterNavigation;
   t: Messages;
 }) {
   const [textFilter, setTextFilter] = useState("");
@@ -515,6 +840,11 @@ function HighlightsTab({
     recordsPageSize,
   );
   const hasFilters = Boolean(textFilter || sourceFilter || colorFilter);
+
+  useEffect(() => {
+    if (sourceFilterNavigation?.tab !== "highlights") return;
+    setSourceFilter(sourceFilterNavigation.keyword);
+  }, [sourceFilterNavigation]);
 
   function resetFilters() {
     setTextFilter("");
@@ -705,6 +1035,7 @@ function VocabularyTab({
   onChange,
   runAction,
   notify,
+  sourceFilterNavigation,
   t,
 }: {
   vocabulary: VocabularyRecord[];
@@ -712,6 +1043,7 @@ function VocabularyTab({
   onChange: () => Promise<void>;
   runAction: RunAction;
   notify: Notify;
+  sourceFilterNavigation?: SourceFilterNavigation;
   t: Messages;
 }) {
   const [wordFilter, setWordFilter] = useState("");
@@ -743,6 +1075,11 @@ function VocabularyTab({
   );
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const hasFilters = Boolean(wordFilter || contextFilter || sourceFilter);
+
+  useEffect(() => {
+    if (sourceFilterNavigation?.tab !== "vocabulary") return;
+    setSourceFilter(sourceFilterNavigation.keyword);
+  }, [sourceFilterNavigation]);
 
   function resetFilters() {
     setWordFilter("");
@@ -1235,10 +1572,40 @@ function ConfirmDeleteIconButton({
   );
 }
 
+function ConfirmArchiveIconButton({
+  label,
+  message,
+  onConfirm,
+  t,
+}: {
+  label: string;
+  message: string;
+  onConfirm: () => Promise<void> | void;
+  t: Messages;
+}) {
+  return (
+    <ConfirmPopover
+      message={message}
+      onConfirm={onConfirm}
+      confirmLabel={t.common.archive}
+      confirmColor="primary"
+      t={t}
+    >
+      {({ open }) => (
+        <IconButton aria-label={label} onClick={open}>
+          <Archive size={16} />
+        </IconButton>
+      )}
+    </ConfirmPopover>
+  );
+}
+
 function ConfirmPopover({
   children,
   message,
   onConfirm,
+  confirmLabel,
+  confirmColor = "error",
   t,
 }: {
   children: (props: {
@@ -1246,6 +1613,8 @@ function ConfirmPopover({
   }) => ReactNode;
   message: string;
   onConfirm: () => Promise<void> | void;
+  confirmLabel?: string;
+  confirmColor?: "error" | "primary";
   t: Messages;
 }) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
@@ -1273,7 +1642,7 @@ function ConfirmPopover({
             </Button>
             <Button
               size="small"
-              color="error"
+              color={confirmColor}
               variant="contained"
               disabled={isSubmitting}
               onClick={async () => {
@@ -1286,7 +1655,7 @@ function ConfirmPopover({
                 }
               }}
             >
-              {t.common.delete}
+              {confirmLabel ?? t.common.delete}
             </Button>
           </Stack>
         </Stack>
@@ -1364,6 +1733,7 @@ function SettingsTab({
     const text = await file.text();
     const parsed = JSON.parse(text) as {
       settings?: AppSettings;
+      footprints?: FootprintRecord[];
       highlights?: HighlightRecord[];
       vocabulary?: VocabularyRecord[];
       explanations?: ExplanationRecord[];
@@ -1722,6 +2092,7 @@ function SettingsTab({
                   "remarker-backup.json",
                   createBackupJson({
                     settings: data.settings,
+                    footprints: data.footprints,
                     highlights: data.highlights,
                     vocabulary: data.vocabulary,
                     includeSensitive,
@@ -1838,6 +2209,10 @@ function includesFuzzy(value: string | undefined, query: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) return true;
   return (value ?? "").toLowerCase().includes(normalizedQuery);
+}
+
+function getSourceSearchKeyword(value: string): string {
+  return value.trim().slice(0, 24);
 }
 
 function getMissingPromptVariables(promptTemplate: string): string[] {
