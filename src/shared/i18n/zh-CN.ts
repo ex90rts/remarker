@@ -57,7 +57,7 @@ export const zhCN: Messages = {
     },
     columns: {
       pageTitle: "页面标题",
-      site: "站点名称",
+      site: "站点",
       browsedAt: "创建时间",
       highlightCount: "划线",
       lookupCount: "生词",

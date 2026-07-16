@@ -177,8 +177,9 @@ export function App() {
   const [data, setData] = useState<ListAllDataResult | undefined>();
   const [toast, setToast] = useState<ToastState | undefined>();
   const [includeSensitive, setIncludeSensitive] = useState(false);
-  const [sourceFilterNavigation, setSourceFilterNavigation] =
-    useState<SourceFilterNavigation | undefined>();
+  const [sourceFilterNavigation, setSourceFilterNavigation] = useState<
+    SourceFilterNavigation | undefined
+  >();
   const language = data?.settings.ui.language ?? detectBrowserLanguage();
   const t = getMessages(language);
 
@@ -1523,7 +1524,7 @@ function CopyIconButton({
       timerRef.current = window.setTimeout(() => {
         setIsCopied(false);
         timerRef.current = undefined;
-      }, 2000);
+      }, 1000);
     } catch (error) {
       notify(formatError(error), "error");
     }

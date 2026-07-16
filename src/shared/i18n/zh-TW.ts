@@ -57,7 +57,7 @@ export const zhTW: Messages = {
     },
     columns: {
       pageTitle: "頁面標題",
-      site: "站點名稱",
+      site: "站點",
       browsedAt: "建立時間",
       highlightCount: "標記",
       lookupCount: "生詞",

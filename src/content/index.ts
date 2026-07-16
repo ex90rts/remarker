@@ -84,6 +84,7 @@ interface VocabularyRecord {
 
 interface ContentMessages {
   copy: string;
+  googleSearch: string;
   speak: string;
   explain: string;
   translate: string;
@@ -109,6 +110,7 @@ interface ContentMessages {
 const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
   "zh-CN": {
     copy: "复制",
+    googleSearch: "Google 搜索",
     speak: "发音",
     explain: "解释",
     translate: "翻译",
@@ -132,6 +134,7 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
   },
   "zh-TW": {
     copy: "複製",
+    googleSearch: "Google 搜尋",
     speak: "發音",
     explain: "解釋",
     translate: "翻譯",
@@ -155,6 +158,7 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
   },
   en: {
     copy: "Copy",
+    googleSearch: "Search Google",
     speak: "Speak",
     explain: "Explain",
     translate: "Translate",
@@ -178,6 +182,7 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
   },
   es: {
     copy: "Copiar",
+    googleSearch: "Buscar en Google",
     speak: "Pronunciar",
     explain: "Explicar",
     translate: "Traducir",
@@ -584,6 +589,9 @@ function renderToolbar(selection: SelectionState): void {
   toolbar.replaceChildren();
 
   toolbar.append(createIconButton("copy", t.copy, copySelectionText));
+  toolbar.append(
+    createIconButton("search", t.googleSearch, searchSelectionInGoogle),
+  );
 
   if (selection.isWord) {
     toolbar.append(createIconButton("volume", t.speak, speakSelection));
@@ -646,6 +654,14 @@ async function copySelectionText(): Promise<void> {
   if (!currentSelection) return;
   await navigator.clipboard.writeText(currentSelection.text);
   showTransientSuccess(currentSelection.rect);
+}
+
+function searchSelectionInGoogle(): void {
+  if (!currentSelection) return;
+  const query = currentSelection.text.trim();
+  if (!query) return;
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 async function speakSelection(): Promise<void> {
@@ -846,11 +862,7 @@ function applyLookupMarkers(records: VocabularyRecord[]): void {
   }> = [];
 
   for (const record of records) {
-    const match = findLookupRangeMatch(
-      record,
-      snapshot,
-      normalizedSnapshot,
-    );
+    const match = findLookupRangeMatch(record, snapshot, normalizedSnapshot);
     if (!match) continue;
     if (rangeIntersectsSelector(match.range, `.${LOOKUP_CLASS}`)) continue;
     plan.push({ record, match });
@@ -875,7 +887,11 @@ function findLookupRangeMatch(
   if (anchorMatches.length === 1) return anchorMatches[0];
 
   if (anchorMatches.length > 1) {
-    const resolved = resolveLookupAnchorMatches(record, anchorMatches, snapshot);
+    const resolved = resolveLookupAnchorMatches(
+      record,
+      anchorMatches,
+      snapshot,
+    );
     if (resolved) return resolved;
   }
 
@@ -893,7 +909,10 @@ function resolveLookupAnchorMatches(
   }));
   scored.sort((left, right) => right.score - left.score);
 
-  if (scored[0] && scored[0].score > (scored[1]?.score ?? Number.NEGATIVE_INFINITY)) {
+  if (
+    scored[0] &&
+    scored[0].score > (scored[1]?.score ?? Number.NEGATIVE_INFINITY)
+  ) {
     return scored[0].match;
   }
 
@@ -920,7 +939,10 @@ function scoreLookupMatch(
 
   const context = normalizeSearchText(record.contextSentence);
   if (context) {
-    const windowStart = Math.max(0, match.start - record.contextSentence.length);
+    const windowStart = Math.max(
+      0,
+      match.start - record.contextSentence.length,
+    );
     const windowEnd = Math.min(
       snapshot.text.length,
       match.start + record.word.length + record.contextSentence.length,
@@ -929,7 +951,8 @@ function scoreLookupMatch(
       snapshot.text.slice(windowStart, windowEnd),
     );
     if (windowText.includes(context)) score += 10000;
-    else if (windowText.includes(normalizeSearchText(record.word))) score += 100;
+    else if (windowText.includes(normalizeSearchText(record.word)))
+      score += 100;
   }
 
   return score;
@@ -1318,7 +1341,10 @@ function getContextTextSnapshot(range: Range): ContextTextSnapshot | undefined {
     if (isBlock) appendBreak();
   }
 
-  function captureElementBoundaryOffset(element: Element, offset: number): void {
+  function captureElementBoundaryOffset(
+    element: Element,
+    offset: number,
+  ): void {
     if (range.startContainer === element && range.startOffset === offset) {
       selectionStart = text.length;
     }
@@ -1455,7 +1481,7 @@ function showTransientSuccess(rect: DOMRect): void {
   positionAboveSelection(toolbar, rect, 8);
   transientTimer = window.setTimeout(() => {
     hideToolbar();
-  }, 2000);
+  }, 600);
 }
 
 function showStatusPanel(text: string, isError: boolean): void {
@@ -2053,6 +2079,7 @@ type IconName =
   | "copy"
   | "highlighter"
   | "refresh"
+  | "search"
   | "sparkles"
   | "trash"
   | "volume"
@@ -2068,6 +2095,8 @@ const ICONS: Record<IconName, string> = {
     '<svg viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>',
   refresh:
     '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/></svg>',
+  search:
+    '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
   sparkles:
     '<svg viewBox="0 0 24 24"><path d="M9.9 2.8 8.7 7l-4.2 1.2 4.2 1.2 1.2 4.2 1.2-4.2 4.2-1.2L11.1 7z"/><path d="M18.5 12.5 17.8 15l-2.5.7 2.5.7.7 2.5.7-2.5 2.5-.7-2.5-.7z"/></svg>',
   trash:
