@@ -69,9 +69,17 @@ export function createHighlightsMarkdownExport(highlights: HighlightRecord[]): s
 }
 
 export function createVocabularyMarkdownExport(vocabulary: VocabularyRecord[]): string {
-  const lines = ["# Remarker new words", ""];
+  return createLookupMarkdownExport(vocabulary, "# Remarker new words");
+}
 
-  for (const item of vocabulary) {
+export function createTranslationMarkdownExport(translations: VocabularyRecord[]): string {
+  return createLookupMarkdownExport(translations, "# Remarker translations");
+}
+
+function createLookupMarkdownExport(records: VocabularyRecord[], title: string): string {
+  const lines = [title, ""];
+
+  for (const item of records) {
     lines.push(`## ${formatMarkdownHeading(item.word, "Untitled")}`);
     lines.push(`- sourceTitle: ${item.sourceTitle || ""}`);
     lines.push(`- sourceLink: ${item.sourceUrl}`);

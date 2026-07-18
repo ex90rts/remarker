@@ -3,7 +3,7 @@ import type { Messages } from "./types";
 export const zhTW: Messages = {
   languageName: "中文繁體",
   common: {
-    appName: "Remarker",
+    appName: "ReMarker",
     refresh: "重新整理",
     created: "建立於",
     copied: "已複製",
@@ -52,6 +52,7 @@ export const zhTW: Messages = {
       footprints: "足跡",
       highlights: "標記",
       vocabulary: "生字表",
+      translations: "翻譯",
       settings: "設定",
       about: "關於",
     },
@@ -67,6 +68,7 @@ export const zhTW: Messages = {
       color: "顏色",
       actions: "操作",
       word: "單字",
+      original: "原文",
       context: "上下文",
       audio: "發音",
     },
@@ -79,6 +81,7 @@ export const zhTW: Messages = {
       footprints: "暫無足跡資料。",
       highlights: "暫無標記資料。",
       vocabulary: "暫無生字資料。",
+      translations: "暫無翻譯資料。",
     },
     actions: {
       starFootprint: "星標足跡",
@@ -90,6 +93,7 @@ export const zhTW: Messages = {
       collapseTranslation: "收合解釋",
       speakWord: "播放 {{word}} 發音",
       deleteVocabularyItem: "刪除生字",
+      deleteTranslation: "刪除翻譯",
       copyExplanation: "複製解釋",
       export: "匯出",
       exportJson: "匯出 JSON",
@@ -102,6 +106,7 @@ export const zhTW: Messages = {
       archiveFootprint: "歸檔這條足跡？歸檔後將不再顯示於目前列表。",
       deleteHighlight: "刪除這條標記？",
       deleteVocabularyItem: "刪除這個生字？",
+      deleteTranslation: "刪除這條翻譯？",
     },
     settings: {
       llm: "大型語言模型",
@@ -157,6 +162,7 @@ export const zhTW: Messages = {
       footprintArchived: "足跡已歸檔。",
       highlightDeleted: "標記已刪除。",
       vocabularyDeleted: "生字已刪除。",
+      translationDeleted: "翻譯已刪除。",
       copied: "已複製。",
       jsonExported: "JSON 已匯出。",
       markdownExported: "Markdown 已匯出。",

@@ -1,7 +1,7 @@
 export const en = {
   languageName: "English",
   common: {
-    appName: "Remarker",
+    appName: "ReMarker",
     refresh: "Refresh",
     created: "Created",
     copied: "Copied",
@@ -50,6 +50,7 @@ export const en = {
       footprints: "Footprints",
       highlights: "Highlights",
       vocabulary: "Vocabulary",
+      translations: "Translations",
       settings: "Settings",
       about: "About",
     },
@@ -65,6 +66,7 @@ export const en = {
       color: "Color",
       actions: "Actions",
       word: "Word",
+      original: "Original",
       context: "Context",
       audio: "Audio",
     },
@@ -77,6 +79,7 @@ export const en = {
       footprints: "No footprints to show.",
       highlights: "No highlights to show.",
       vocabulary: "No vocabulary items to show.",
+      translations: "No translations to show.",
     },
     actions: {
       starFootprint: "Star footprint",
@@ -88,6 +91,7 @@ export const en = {
       collapseTranslation: "Collapse translation",
       speakWord: "Speak {{word}}",
       deleteVocabularyItem: "Delete vocabulary item",
+      deleteTranslation: "Delete translation",
       copyExplanation: "Copy explanation",
       export: "Export",
       exportJson: "Export JSON",
@@ -101,6 +105,7 @@ export const en = {
         "Archive this footprint? It will be hidden from the current list.",
       deleteHighlight: "Delete this highlight?",
       deleteVocabularyItem: "Delete this vocabulary item?",
+      deleteTranslation: "Delete this translation?",
     },
     settings: {
       llm: "LLM",
@@ -162,6 +167,7 @@ export const en = {
       footprintArchived: "Footprint archived.",
       highlightDeleted: "Highlight deleted.",
       vocabularyDeleted: "Vocabulary item deleted.",
+      translationDeleted: "Translation deleted.",
       copied: "Copied.",
       jsonExported: "JSON exported.",
       markdownExported: "Markdown exported.",

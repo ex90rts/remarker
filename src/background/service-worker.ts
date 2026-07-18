@@ -223,10 +223,7 @@ async function explainSelection(
     targetLanguage,
   });
 
-  const cached =
-    input.selectionKind === "word"
-      ? await getVocabularyByCacheKey(cacheKey)
-      : undefined;
+  const cached = await getVocabularyByCacheKey(cacheKey);
   if (cached && !input.forceRefresh) {
     const sanitizedResult = stripOuterCodeFence(cached.translation ?? "");
     const currentRecord: VocabularyRecord = {
@@ -264,22 +261,9 @@ async function explainSelection(
   });
 
   const now = new Date().toISOString();
-  if (input.selectionKind === "text") {
-    return {
-      id: crypto.randomUUID(),
-      selectionKind: "text",
-      selectedText: input.selectedText,
-      context: input.context,
-      sourceUrl: input.sourceUrl,
-      sourceTitle: input.sourceTitle,
-      anchor: input.anchor,
-      result,
-      createdAt: now,
-    };
-  }
-
   const record: VocabularyRecord = {
     id: cached?.id ?? crypto.randomUUID(),
+    selectionKind: input.selectionKind,
     word: input.selectedText,
     normalizedWord: input.selectedText.trim().toLowerCase(),
     urlKey,
@@ -307,7 +291,7 @@ async function getVocabularyForUrl(
 ): Promise<VocabularyRecord[]> {
   const vocabulary = await getAllFromStore<VocabularyRecord>("vocabulary");
   return vocabulary.filter(
-    (record) => record.urlKey === urlKey,
+    (record) => record.urlKey === urlKey && record.selectionKind !== "text",
   );
 }
 
@@ -338,7 +322,7 @@ async function deleteVocabulary(id: string): Promise<{ id: string }> {
 function vocabularyToLookupResult(record: VocabularyRecord): SelectionLookupResult {
   return {
     id: record.id,
-    selectionKind: "word",
+    selectionKind: record.selectionKind ?? "word",
     selectedText: record.word,
     context: record.contextSentence,
     sourceUrl: record.sourceUrl,

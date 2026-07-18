@@ -1,10 +1,10 @@
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-# Remarker - AI Reading Assistant and Vocabulary Builder
+# ReMarker - AI Reading Assistant and Vocabulary Builder
 
-Remarker is a local-first Chrome extension for deep web reading, language learning, contextual AI word lookup, and personal study notes. It lets readers highlight important passages, explain unfamiliar words and phrases with an OpenAI-compatible model, save vocabulary automatically, keep a page footprint list, and restore highlights and vocabulary underlines when revisiting the same page.
+ReMarker is a local-first Chrome extension for deep web reading, language learning, contextual AI word lookup, and personal study notes. It lets readers highlight important passages, explain unfamiliar words and phrases with an OpenAI-compatible model, save vocabulary automatically, keep a page footprint list, and restore highlights and vocabulary underlines when revisiting the same page.
 
-Remarker is useful for students, researchers, engineers, and language learners who read foreign-language articles, documentation, essays, papers, or long-form web content and want a private, repeatable workflow for understanding, collecting, and reviewing what they read.
+ReMarker is useful for students, researchers, engineers, and language learners who read foreign-language articles, documentation, essays, papers, or long-form web content and want a private, repeatable workflow for understanding, collecting, and reviewing what they read.
 
 <div align="center">
   <img src="https://ex90rts.github.io/remarker/assets/images/screenshot-01.webp" alt="截图" width="80%">
@@ -14,7 +14,7 @@ Remarker is useful for students, researchers, engineers, and language learners w
   <img src="https://ex90rts.github.io/remarker/assets/images/screenshot-04.webp" alt="截图" width="80%">
 </div>
 
-## Why Remarker
+## Why ReMarker
 
 - It connects reading and vocabulary learning in one flow instead of splitting highlights, dictionary lookup, and review into separate tools.
 - It explains words and phrases using the surrounding sentence or paragraph, so the answer is grounded in the page you are reading.
@@ -34,7 +34,7 @@ Remarker is useful for students, researchers, engineers, and language learners w
 - Pronunciation fallback chain: Use Merriam-Webster audio, Free Dictionary audio, and browser speech synthesis as fallbacks.
 - Data import and export: Export highlights and vocabulary to Markdown, and import or export key app data as JSON.
 - Multilingual interface: Use the UI language as the target language for AI word lookups and translations.
-- Site-level control: Enable or disable Remarker per site and keep reading preferences configurable.
+- Site-level control: Enable or disable ReMarker per site and keep reading preferences configurable.
 
 ## Installation and Local Development
 
@@ -62,7 +62,7 @@ Build the extension:
 npm run build
 ```
 
-The build output is written to `dist/`. To load Remarker locally, open the Chrome extensions page, enable developer mode, choose "Load unpacked", and select the `dist/` directory.
+The build output is written to `dist/`. To load ReMarker locally, open the Chrome extensions page, enable developer mode, choose "Load unpacked", and select the `dist/` directory.
 
 ## Configuration
 
@@ -99,29 +99,29 @@ The prompt template must include these variables:
 
 ## Data and Privacy
 
-Remarker is local-first: footprints, highlights, vocabulary, and settings are stored in the browser's IndexedDB by default. Word lookup records and results are stored in the vocabulary data; text translations are shown immediately and are not persisted. The LLM API key is read and used by the extension background service worker and is not written into the page DOM.
+ReMarker is local-first: footprints, highlights, vocabulary, translation records, and settings are stored in the browser's IndexedDB by default. The LLM API key is read and used by the extension background service worker and is not written into the page DOM.
 
 When an AI lookup or translation is requested, the selected text and surrounding context are sent to the configured LLM endpoint so the model can answer in context. JSON exports exclude sensitive configuration by default and include it only when the user explicitly opts in.
 
 ## FAQ
 
-### What is Remarker?
+### What is ReMarker?
 
-Remarker is a Chrome-compatible browser extension for highlighting web pages, explaining selected words or phrases with AI, saving vocabulary, and restoring reading notes when pages are revisited.
+ReMarker is a Chrome-compatible browser extension for highlighting web pages, explaining selected words or phrases with AI, saving vocabulary, and restoring reading notes when pages are revisited.
 
-### Who is Remarker for?
+### Who is ReMarker for?
 
-Remarker is for language learners, researchers, students, developers, and heavy web readers who want to turn online reading into a searchable study and review workflow.
+ReMarker is for language learners, researchers, students, developers, and heavy web readers who want to turn online reading into a searchable study and review workflow.
 
-### Does Remarker require an AI provider?
+### Does ReMarker require an AI provider?
 
 AI word lookup and translation require a configured OpenAI-compatible provider or custom endpoint. Highlighting, local records, and export workflows are part of the extension itself.
 
-### Where does Remarker store data?
+### Where does ReMarker store data?
 
-Remarker stores app data locally in browser IndexedDB by default. Users can export footprints, highlights, vocabulary, and selected app data when needed.
+ReMarker stores app data locally in browser IndexedDB by default. Users can export footprints, highlights, vocabulary, translations, and selected app data when needed.
 
-### Which languages does Remarker support?
+### Which languages does ReMarker support?
 
 The interface supports English, Simplified Chinese, Traditional Chinese, and Spanish. The selected interface language is also used as the target language for AI word lookups and translations.
 

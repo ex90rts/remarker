@@ -108,6 +108,8 @@ export interface HighlightRecord {
 
 export interface VocabularyRecord {
   id: string;
+  /** Missing on legacy records; those records are word lookups. */
+  selectionKind?: "word" | "text";
   word: string;
   normalizedWord: string;
   urlKey: string;

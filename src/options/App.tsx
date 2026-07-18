@@ -54,6 +54,7 @@ import type { MouseEvent, ReactNode } from "react";
 import {
   createBackupJson,
   createHighlightsMarkdownExport,
+  createTranslationMarkdownExport,
   createVocabularyMarkdownExport,
 } from "../shared/export";
 import {
@@ -92,11 +93,17 @@ import type {
   VocabularyRecord,
 } from "../shared/types";
 
-type TabKey = "footprints" | "highlights" | "vocabulary" | "settings" | "about";
+type TabKey =
+  | "footprints"
+  | "highlights"
+  | "vocabulary"
+  | "translations"
+  | "settings"
+  | "about";
 type ToastSeverity = "success" | "error";
 
 interface SourceFilterNavigation {
-  tab: "highlights" | "vocabulary";
+  tab: "highlights" | "vocabulary" | "translations";
   keyword: string;
   token: number;
 }
@@ -216,7 +223,7 @@ export function App() {
   }
 
   function switchTabWithSourceFilter(
-    nextTab: "highlights" | "vocabulary",
+    nextTab: "highlights" | "vocabulary" | "translations",
     sourceTitle: string,
   ) {
     setSourceFilterNavigation({
@@ -231,7 +238,12 @@ export function App() {
     () => ({
       footprints: data?.footprints.length ?? 0,
       highlights: data?.highlights.length ?? 0,
-      vocabulary: data?.vocabulary.length ?? 0,
+      vocabulary:
+        data?.vocabulary.filter((item) => item.selectionKind !== "text")
+          .length ?? 0,
+      translations:
+        data?.vocabulary.filter((item) => item.selectionKind === "text")
+          .length ?? 0,
     }),
     [data],
   );
@@ -314,6 +326,12 @@ export function App() {
               label={`${t.options.tabs.vocabulary} (${counts.vocabulary})`}
             />
             <Tab
+              value="translations"
+              icon={<Languages size={16} />}
+              iconPosition="start"
+              label={`${t.options.tabs.translations} (${counts.translations})`}
+            />
+            <Tab
               value="settings"
               icon={<Settings size={16} />}
               iconPosition="start"
@@ -352,6 +370,19 @@ export function App() {
             {tab === "vocabulary" && (
               <VocabularyTab
                 vocabulary={data?.vocabulary ?? []}
+                selectionKind="word"
+                recordsPageSize={recordsPageSize}
+                onChange={reload}
+                runAction={runAction}
+                notify={notify}
+                sourceFilterNavigation={sourceFilterNavigation}
+                t={t}
+              />
+            )}
+            {tab === "translations" && (
+              <VocabularyTab
+                vocabulary={data?.vocabulary ?? []}
+                selectionKind="text"
                 recordsPageSize={recordsPageSize}
                 onChange={reload}
                 runAction={runAction}
@@ -1031,6 +1062,7 @@ function HighlightsTab({
 
 function VocabularyTab({
   vocabulary,
+  selectionKind,
   recordsPageSize,
   onChange,
   runAction,
@@ -1039,6 +1071,7 @@ function VocabularyTab({
   t,
 }: {
   vocabulary: VocabularyRecord[];
+  selectionKind: "word" | "text";
   recordsPageSize: RecordsPageSize;
   onChange: () => Promise<void>;
   runAction: RunAction;
@@ -1046,12 +1079,17 @@ function VocabularyTab({
   sourceFilterNavigation?: SourceFilterNavigation;
   t: Messages;
 }) {
+  const isTranslation = selectionKind === "text";
+  const recordLabel = isTranslation
+    ? t.options.columns.original
+    : t.options.columns.word;
   const [wordFilter, setWordFilter] = useState("");
   const [contextFilter, setContextFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const filteredVocabulary = useMemo(
     () =>
       vocabulary.filter((item) => {
+        if ((item.selectionKind ?? "word") !== selectionKind) return false;
         const matchesWord = includesFuzzy(item.word, wordFilter);
         const matchesContext = includesFuzzy(
           item.contextSentence,
@@ -1063,7 +1101,7 @@ function VocabularyTab({
         );
         return matchesWord && matchesContext && matchesSource;
       }),
-    [contextFilter, sourceFilter, vocabulary, wordFilter],
+    [contextFilter, selectionKind, sourceFilter, vocabulary, wordFilter],
   );
   const sortedVocabulary = useMemo(
     () => sortByCreatedAtDesc(filteredVocabulary),
@@ -1077,7 +1115,8 @@ function VocabularyTab({
   const hasFilters = Boolean(wordFilter || contextFilter || sourceFilter);
 
   useEffect(() => {
-    if (sourceFilterNavigation?.tab !== "vocabulary") return;
+    const currentTab = isTranslation ? "translations" : "vocabulary";
+    if (sourceFilterNavigation?.tab !== currentTab) return;
     setSourceFilter(sourceFilterNavigation.keyword);
   }, [sourceFilterNavigation]);
 
@@ -1094,7 +1133,7 @@ function VocabularyTab({
           <>
             <TextField
               size="small"
-              label={t.options.columns.word}
+              label={recordLabel}
               value={wordFilter}
               onChange={(event) => setWordFilter(event.target.value)}
             />
@@ -1129,8 +1168,12 @@ function VocabularyTab({
                 void runAction(
                   () =>
                     downloadFile(
-                      "remarker-new-words.md",
-                      createVocabularyMarkdownExport(sortedVocabulary),
+                      isTranslation
+                        ? "remarker-translations.md"
+                        : "remarker-new-words.md",
+                      isTranslation
+                        ? createTranslationMarkdownExport(sortedVocabulary)
+                        : createVocabularyMarkdownExport(sortedVocabulary),
                       "text/markdown",
                     ),
                   t.options.notices.markdownExported,
@@ -1155,7 +1198,7 @@ function VocabularyTab({
         <colgroup>
           <col style={{ width: 48 }} />
           <col style={{ width: 260 }} />
-          <col style={{ width: 72 }} />
+          {!isTranslation && <col style={{ width: 72 }} />}
           <col style={{ width: 240 }} />
           <col style={{ width: 240 }} />
           <col style={{ width: 88 }} />
@@ -1163,8 +1206,10 @@ function VocabularyTab({
         <TableHead>
           <TableRow>
             <TableCell />
-            <TableCell>{t.options.columns.word}</TableCell>
-            <TableCell>{t.options.columns.audio}</TableCell>
+            <TableCell>{recordLabel}</TableCell>
+            {!isTranslation && (
+              <TableCell>{t.options.columns.audio}</TableCell>
+            )}
             <TableCell>{t.options.columns.context}</TableCell>
             <TableCell>{t.options.columns.source}</TableCell>
             <TableCell align="center">{t.options.columns.actions}</TableCell>
@@ -1172,7 +1217,14 @@ function VocabularyTab({
         </TableHead>
         <TableBody>
           {pageItems.length === 0 ? (
-            <EmptyTableRow colSpan={6} message={t.options.empty.vocabulary} />
+            <EmptyTableRow
+              colSpan={isTranslation ? 5 : 6}
+              message={
+                isTranslation
+                  ? t.options.empty.translations
+                  : t.options.empty.vocabulary
+              }
+            />
           ) : (
             pageItems.map((item) => (
               <Fragment key={item.id}>
@@ -1204,6 +1256,16 @@ function VocabularyTab({
                       component="div"
                       variant="body2"
                       fontWeight={600}
+                      title={isTranslation ? item.word : undefined}
+                      sx={
+                        isTranslation
+                          ? {
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }
+                          : undefined
+                      }
                     >
                       {item.word}
                     </Typography>
@@ -1216,16 +1278,20 @@ function VocabularyTab({
                       {t.common.created} {formatCreatedAt(item.createdAt)}
                     </Typography>
                   </TableCell>
-                  <TableCell>
-                    <IconButton
-                      aria-label={interpolate(t.options.actions.speakWord, {
-                        word: item.word,
-                      })}
-                      onClick={() => void runAction(() => speakWord(item.word))}
-                    >
-                      <Volume2 size={16} />
-                    </IconButton>
-                  </TableCell>
+                  {!isTranslation && (
+                    <TableCell>
+                      <IconButton
+                        aria-label={interpolate(t.options.actions.speakWord, {
+                          word: item.word,
+                        })}
+                        onClick={() =>
+                          void runAction(() => speakWord(item.word))
+                        }
+                      >
+                        <Volume2 size={16} />
+                      </IconButton>
+                    </TableCell>
+                  )}
                   <TableCell sx={{ width: 240, maxWidth: 240 }}>
                     <Typography
                       component="div"
@@ -1244,8 +1310,16 @@ function VocabularyTab({
                   </TableCell>
                   <TableCell align="center">
                     <ConfirmDeleteIconButton
-                      label={t.options.actions.deleteVocabularyItem}
-                      message={t.options.confirmations.deleteVocabularyItem}
+                      label={
+                        isTranslation
+                          ? t.options.actions.deleteTranslation
+                          : t.options.actions.deleteVocabularyItem
+                      }
+                      message={
+                        isTranslation
+                          ? t.options.confirmations.deleteTranslation
+                          : t.options.confirmations.deleteVocabularyItem
+                      }
                       onConfirm={async () => {
                         await runAction(async () => {
                           await sendMessage({
@@ -1253,7 +1327,9 @@ function VocabularyTab({
                             id: item.id,
                           });
                           await onChange();
-                        }, t.options.notices.vocabularyDeleted);
+                        }, isTranslation
+                          ? t.options.notices.translationDeleted
+                          : t.options.notices.vocabularyDeleted);
                       }}
                       t={t}
                     />
@@ -1261,7 +1337,7 @@ function VocabularyTab({
                 </TableRow>
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={isTranslation ? 5 : 6}
                     sx={{
                       py: 0,
                       borderBottom: expandedRows[item.id] ? undefined : 0,
@@ -1303,6 +1379,35 @@ function VocabularyTab({
                             )}
                           </Typography>
                         </Box>
+                        {isTranslation && (
+                          <Box
+                            sx={{
+                              bgcolor: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 1,
+                              p: 1.5,
+                              mb: 1.5,
+                            }}
+                          >
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              component="div"
+                              sx={{ mb: 0.5 }}
+                            >
+                              {t.options.columns.original}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                whiteSpace: "pre-wrap",
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {item.word || t.common.empty}
+                            </Typography>
+                          </Box>
+                        )}
                         <Stack
                           direction="row"
                           justifyContent="space-between"
@@ -1321,7 +1426,9 @@ function VocabularyTab({
                               fontWeight: 700,
                             }}
                           >
-                            {t.content.explanation}
+                            {isTranslation
+                              ? t.content.translation
+                              : t.content.explanation}
                           </Typography>
                           <CopyIconButton
                             label={t.options.actions.copyExplanation}
@@ -1363,7 +1470,7 @@ function VocabularyTab({
                 page={page}
                 recordsPageSize={recordsPageSize}
                 onPageChange={setPage}
-                colSpan={6}
+                colSpan={isTranslation ? 5 : 6}
               />
             </TableRow>
           </TableFooter>

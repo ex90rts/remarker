@@ -3,7 +3,7 @@ import type { Messages } from "./types";
 export const es: Messages = {
   languageName: "Español",
   common: {
-    appName: "Remarker",
+    appName: "ReMarker",
     refresh: "Actualizar",
     created: "Creado",
     copied: "Copiado",
@@ -52,6 +52,7 @@ export const es: Messages = {
       footprints: "Huellas",
       highlights: "Resaltados",
       vocabulary: "Vocabulario",
+      translations: "Traducciones",
       settings: "Ajustes",
       about: "Acerca de",
     },
@@ -67,6 +68,7 @@ export const es: Messages = {
       color: "Color",
       actions: "Acciones",
       word: "Palabra",
+      original: "Original",
       context: "Contexto",
       audio: "Audio",
     },
@@ -79,6 +81,7 @@ export const es: Messages = {
       footprints: "No hay huellas para mostrar.",
       highlights: "No hay resaltados para mostrar.",
       vocabulary: "No hay elementos de vocabulario para mostrar.",
+      translations: "No hay traducciones para mostrar.",
     },
     actions: {
       starFootprint: "Marcar huella",
@@ -90,6 +93,7 @@ export const es: Messages = {
       collapseTranslation: "Contraer explicación",
       speakWord: "Pronunciar {{word}}",
       deleteVocabularyItem: "Eliminar elemento de vocabulario",
+      deleteTranslation: "Eliminar traducción",
       copyExplanation: "Copiar explicación",
       export: "Exportar",
       exportJson: "Exportar JSON",
@@ -103,6 +107,7 @@ export const es: Messages = {
         "¿Archivar esta huella? Se ocultará de la lista actual.",
       deleteHighlight: "¿Eliminar este resaltado?",
       deleteVocabularyItem: "¿Eliminar este elemento de vocabulario?",
+      deleteTranslation: "¿Eliminar esta traducción?",
     },
     settings: {
       llm: "LLM",
@@ -166,6 +171,7 @@ export const es: Messages = {
       footprintArchived: "Huella archivada.",
       highlightDeleted: "Resaltado eliminado.",
       vocabularyDeleted: "Elemento de vocabulario eliminado.",
+      translationDeleted: "Traducción eliminada.",
       copied: "Copiado.",
       jsonExported: "JSON exportado.",
       markdownExported: "Markdown exportado.",

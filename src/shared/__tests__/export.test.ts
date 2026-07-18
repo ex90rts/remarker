@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { createBackupJson, createHighlightsMarkdownExport, createVocabularyMarkdownExport } from "../export";
+import {
+  createBackupJson,
+  createHighlightsMarkdownExport,
+  createTranslationMarkdownExport,
+  createVocabularyMarkdownExport,
+} from "../export";
 import type { FootprintRecord, HighlightRecord, VocabularyRecord } from "../types";
 
 const footprint: FootprintRecord = {
@@ -87,6 +92,16 @@ describe("export helpers", () => {
     expect(markdown).toContain("- sourceTitle: Doc");
     expect(markdown).toContain("- sourceLink: https://example.com/doc");
     expect(markdown).toContain("- context: A useful sentence.");
+    expect(markdown).toContain("  ```markdown\n  有用的\n  ```");
+  });
+
+  it("creates translation markdown", () => {
+    const markdown = createTranslationMarkdownExport([
+      { ...vocabulary, selectionKind: "text", word: "A useful sentence." },
+    ]);
+
+    expect(markdown).toContain("# Remarker translations");
+    expect(markdown).toContain("## A useful sentence.");
     expect(markdown).toContain("  ```markdown\n  有用的\n  ```");
   });
 });

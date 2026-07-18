@@ -3,7 +3,7 @@ import type { Messages } from "./types";
 export const zhCN: Messages = {
   languageName: "中文简体",
   common: {
-    appName: "Remarker",
+    appName: "ReMarker",
     refresh: "刷新",
     created: "创建于",
     copied: "已复制",
@@ -52,6 +52,7 @@ export const zhCN: Messages = {
       footprints: "足迹",
       highlights: "划线",
       vocabulary: "生词表",
+      translations: "翻译",
       settings: "设置",
       about: "关于",
     },
@@ -67,6 +68,7 @@ export const zhCN: Messages = {
       color: "颜色",
       actions: "操作",
       word: "单词",
+      original: "原文",
       context: "上下文",
       audio: "发音",
     },
@@ -79,6 +81,7 @@ export const zhCN: Messages = {
       footprints: "暂无足迹数据。",
       highlights: "暂无划线数据。",
       vocabulary: "暂无生词数据。",
+      translations: "暂无翻译数据。",
     },
     actions: {
       starFootprint: "星标足迹",
@@ -90,6 +93,7 @@ export const zhCN: Messages = {
       collapseTranslation: "折叠解释",
       speakWord: "播放 {{word}} 发音",
       deleteVocabularyItem: "删除生词",
+      deleteTranslation: "删除翻译",
       copyExplanation: "复制解释",
       export: "导出",
       exportJson: "导出 JSON",
@@ -102,6 +106,7 @@ export const zhCN: Messages = {
       archiveFootprint: "归档这条足迹？归档后将不再显示在当前列表中。",
       deleteHighlight: "删除这条划线？",
       deleteVocabularyItem: "删除这个生词？",
+      deleteTranslation: "删除这条翻译？",
     },
     settings: {
       llm: "大模型",
@@ -157,6 +162,7 @@ export const zhCN: Messages = {
       footprintArchived: "足迹已归档。",
       highlightDeleted: "划线已删除。",
       vocabularyDeleted: "生词已删除。",
+      translationDeleted: "翻译已删除。",
       copied: "已复制。",
       jsonExported: "JSON 已导出。",
       markdownExported: "Markdown 已导出。",
