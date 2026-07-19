@@ -38,7 +38,7 @@ ReMarker is useful for students, researchers, engineers, and language learners w
 - Multilingual interface: Use the UI language as the target language for AI word lookups and translations.
 - Site-level control: Enable or disable ReMarker per site and keep reading preferences configurable.
 
-## Installation and Local Development
+## Local Development
 
 Install dependencies:
 
