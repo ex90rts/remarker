@@ -1,6 +1,6 @@
 ---
 layout: default
-title: ReMarker
+title: ReMarker Site
 description: Public documentation for the ReMarker browser extension.
 permalink: /
 ---
