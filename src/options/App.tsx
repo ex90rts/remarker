@@ -1,11 +1,9 @@
 import {
-  AppBar,
   Box,
   Button,
   Checkbox,
   Chip,
   Collapse,
-  Container,
   Divider,
   FormControlLabel,
   IconButton,
@@ -23,12 +21,14 @@ import {
   TableRow,
   Tabs,
   TextField,
-  Toolbar,
+  Tooltip,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
 import {
   Bug,
   Archive,
+  NotebookText,
   ChevronDown,
   ChevronRight,
   Check,
@@ -39,6 +39,8 @@ import {
   Highlighter,
   Info,
   Languages,
+  PanelLeftClose,
+  PanelLeftOpen,
   RefreshCcw,
   RotateCcw,
   Settings,
@@ -50,7 +52,7 @@ import {
   X,
 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent, ReactNode } from "react";
+import type { MouseEvent, ReactElement, ReactNode } from "react";
 import {
   createBackupJson,
   createHighlightsMarkdownExport,
@@ -184,11 +186,14 @@ export function App() {
   const [data, setData] = useState<ListAllDataResult | undefined>();
   const [toast, setToast] = useState<ToastState | undefined>();
   const [includeSensitive, setIncludeSensitive] = useState(false);
+  const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [sourceFilterNavigation, setSourceFilterNavigation] = useState<
     SourceFilterNavigation | undefined
   >();
   const language = data?.settings.ui.language ?? detectBrowserLanguage();
   const t = getMessages(language);
+  const isNarrowSidebar = useMediaQuery("(max-width:1023.95px)");
+  const sidebarCollapsed = manuallyCollapsed || isNarrowSidebar;
 
   useEffect(() => {
     void reload();
@@ -249,166 +254,452 @@ export function App() {
   );
   const recordsPageSize =
     data?.settings.ui.recordsPageSize ?? DEFAULT_RECORDS_PAGE_SIZE;
+  const activeTabLabel = getTabLabel(tab, t);
 
   return (
-    <Box minHeight="100vh">
-      <AppBar position="sticky" elevation={0} color="inherit">
-        <Toolbar sx={{ borderBottom: "1px solid", borderColor: "divider" }}>
-          <Highlighter size={22} />
-          <Typography
-            variant="h6"
-            sx={{
-              ml: 1,
-              flexGrow: 1,
-              fontWeight: 800,
-            }}
-          >
+    <Box
+      sx={{
+        display: "flex",
+        minHeight: "100vh",
+        bgcolor: "background.default",
+        flexDirection: "row",
+      }}
+    >
+      <Box
+        component="aside"
+        sx={{
+          width: sidebarCollapsed ? 76 : 244,
+          flexShrink: 0,
+          display: "flex",
+          position: "sticky",
+          top: 0,
+          alignSelf: "flex-start",
+          height: "100vh",
+          overflowY: "auto",
+          flexDirection: "column",
+          gap: 3,
+          alignItems: "stretch",
+          px: sidebarCollapsed ? 1.5 : 2.25,
+          py: 2.5,
+          borderRight: "1px solid #e4e9f2",
+          bgcolor: "#ffffff",
+        }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent={sidebarCollapsed ? "center" : "flex-start"}
+          sx={{ flexShrink: 0, px: sidebarCollapsed ? 0 : 0.75 }}
+        >
+          <Stack direction="row" spacing={1} alignItems="center">
             <Box
-              component="span"
+              component="img"
+              src="/icons/remarker-icon.svg"
+              alt=""
+              sx={{ width: 30, height: 30, borderRadius: "8px" }}
+            />
+            <Typography
+              variant="h3"
               sx={{
-                display: "inline-block",
+                display: sidebarCollapsed ? "none" : "block",
+                fontSize: "1.5rem",
+                fontWeight: 800,
                 background:
-                  "linear-gradient(100deg, #00319d 0%, #0042d3 24%, #d946ef 56%, #06b6d4 100%)",
+                  "linear-gradient(100deg, #00319d 0%, #0042d3 28%, #d946ef 60%, #06b6d4 100%)",
                 WebkitBackgroundClip: "text",
                 backgroundClip: "text",
                 WebkitTextFillColor: "transparent",
               }}
             >
               {t.common.appName}
-            </Box>
-          </Typography>
-          <Stack direction="row" spacing={1.5}>
-            <Button
-              startIcon={<Github size={16} />}
-              href={REMARKER_GITHUB_URL}
-              target="_blank"
-              rel="noreferrer"
-              style={{ textTransform: "none" }}
-            >
-              GitHub
-            </Button>
-            <Button
-              startIcon={<Bug size={16} />}
-              href={REPORT_ISSUE_URL}
-              target="_blank"
-              rel="noreferrer"
-              style={{ textTransform: "none" }}
-            >
-              Report an issue
-            </Button>
+            </Typography>
           </Stack>
-        </Toolbar>
-      </AppBar>
+        </Stack>
 
-      <Container maxWidth="lg" sx={{ py: 3 }}>
-        <Paper variant="outlined" style={{ minWidth: 1000 }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 1,
+            flex: 1,
+            minWidth: 0,
+            width: "100%",
+          }}
+        >
           <Tabs
+            orientation="vertical"
+            variant="scrollable"
             value={tab}
             onChange={(_, value: TabKey) => switchTab(value)}
-            sx={{ px: 2, borderBottom: 1, borderColor: "divider" }}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              width: "100%",
+              ".MuiTabs-flexContainerVertical": {
+                flexDirection: "column",
+                gap: 0.75,
+              },
+              ".MuiTabs-scroller": {
+                overflowX: "hidden !important",
+                overflowY: "hidden !important",
+              },
+              ".MuiTabs-indicator": { display: "none" },
+              ".MuiTab-root": {
+                minHeight: 40,
+                justifyContent: sidebarCollapsed ? "center" : "flex-start",
+                minWidth: 0,
+                px: sidebarCollapsed ? 0 : 1.25,
+                borderRadius: "7px",
+                color: "#65728b",
+                fontSize: "0.81rem",
+                fontWeight: 650,
+                textTransform: "none",
+                "&.Mui-selected": {
+                  bgcolor: "#eaf1ff",
+                  color: "#215ac9",
+                },
+              },
+              ".MuiTab-iconWrapper": { mr: sidebarCollapsed ? 0 : 1 },
+            }}
           >
             <Tab
               value="footprints"
-              icon={<Footprints size={16} />}
+              icon={getSidebarTabIcon(
+                <Footprints size={16} />,
+                t.options.tabs.footprints,
+                sidebarCollapsed,
+              )}
               iconPosition="start"
-              label={`${t.options.tabs.footprints} (${counts.footprints})`}
+              aria-label={t.options.tabs.footprints}
+              label={
+                sidebarCollapsed ? undefined : (
+                  <NavigationLabel
+                    label={t.options.tabs.footprints}
+                    count={counts.footprints}
+                  />
+                )
+              }
             />
             <Tab
               value="highlights"
-              icon={<Highlighter size={16} />}
+              icon={getSidebarTabIcon(
+                <Highlighter size={16} />,
+                t.options.tabs.highlights,
+                sidebarCollapsed,
+              )}
               iconPosition="start"
-              label={`${t.options.tabs.highlights} (${counts.highlights})`}
+              aria-label={t.options.tabs.highlights}
+              label={
+                sidebarCollapsed ? undefined : (
+                  <NavigationLabel
+                    label={t.options.tabs.highlights}
+                    count={counts.highlights}
+                  />
+                )
+              }
             />
             <Tab
               value="vocabulary"
-              icon={<Languages size={16} />}
+              icon={getSidebarTabIcon(
+                <NotebookText size={16} />,
+                t.options.tabs.vocabulary,
+                sidebarCollapsed,
+              )}
               iconPosition="start"
-              label={`${t.options.tabs.vocabulary} (${counts.vocabulary})`}
+              aria-label={t.options.tabs.vocabulary}
+              label={
+                sidebarCollapsed ? undefined : (
+                  <NavigationLabel
+                    label={t.options.tabs.vocabulary}
+                    count={counts.vocabulary}
+                  />
+                )
+              }
             />
             <Tab
               value="translations"
-              icon={<Languages size={16} />}
+              icon={getSidebarTabIcon(
+                <Languages size={16} />,
+                t.options.tabs.translations,
+                sidebarCollapsed,
+              )}
               iconPosition="start"
-              label={`${t.options.tabs.translations} (${counts.translations})`}
+              aria-label={t.options.tabs.translations}
+              label={
+                sidebarCollapsed ? undefined : (
+                  <NavigationLabel
+                    label={t.options.tabs.translations}
+                    count={counts.translations}
+                  />
+                )
+              }
             />
             <Tab
               value="settings"
-              icon={<Settings size={16} />}
+              icon={getSidebarTabIcon(
+                <Settings size={16} />,
+                t.options.tabs.settings,
+                sidebarCollapsed,
+              )}
               iconPosition="start"
-              label={t.options.tabs.settings}
+              aria-label={t.options.tabs.settings}
+              label={sidebarCollapsed ? undefined : t.options.tabs.settings}
             />
             <Tab
               value="about"
-              icon={<Info size={16} />}
+              icon={getSidebarTabIcon(
+                <Info size={16} />,
+                t.options.tabs.about,
+                sidebarCollapsed,
+              )}
               iconPosition="start"
-              label={t.options.tabs.about}
+              aria-label={t.options.tabs.about}
+              label={sidebarCollapsed ? undefined : t.options.tabs.about}
             />
           </Tabs>
 
-          <Box p={2}>
-            {tab === "footprints" && (
-              <FootprintsTab
-                footprints={data?.footprints ?? []}
-                recordsPageSize={recordsPageSize}
-                onChange={reload}
-                onOpenTabWithSourceFilter={switchTabWithSourceFilter}
-                runAction={runAction}
-                t={t}
-              />
+          <Stack spacing={0.75} sx={{ flexShrink: 0, px: 0.25 }}>
+            <SidebarLink
+              href={REMARKER_GITHUB_URL}
+              icon={<Github size={16} />}
+              label="GitHub"
+              collapsed={sidebarCollapsed}
+            />
+            <SidebarLink
+              href={REPORT_ISSUE_URL}
+              icon={<Bug size={16} />}
+              label="Report an issue"
+              collapsed={sidebarCollapsed}
+            />
+            {!isNarrowSidebar && (
+              <Tooltip
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                placement="right"
+              >
+                <IconButton
+                  aria-label={
+                    sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+                  }
+                  onClick={() =>
+                    setManuallyCollapsed((collapsed) => !collapsed)
+                  }
+                  sx={{
+                    alignSelf: sidebarCollapsed ? "center" : "flex-start",
+                    color: "#65728b",
+                    "&:hover": { color: "#215ac9" },
+                  }}
+                >
+                  {sidebarCollapsed ? (
+                    <PanelLeftOpen size={17} />
+                  ) : (
+                    <PanelLeftClose size={17} />
+                  )}
+                </IconButton>
+              </Tooltip>
             )}
-            {tab === "highlights" && (
-              <HighlightsTab
-                highlights={data?.highlights ?? []}
-                recordsPageSize={recordsPageSize}
-                onChange={reload}
-                runAction={runAction}
-                notify={notify}
-                sourceFilterNavigation={sourceFilterNavigation}
-                t={t}
-              />
-            )}
-            {tab === "vocabulary" && (
-              <VocabularyTab
-                vocabulary={data?.vocabulary ?? []}
-                selectionKind="word"
-                recordsPageSize={recordsPageSize}
-                onChange={reload}
-                runAction={runAction}
-                notify={notify}
-                sourceFilterNavigation={sourceFilterNavigation}
-                t={t}
-              />
-            )}
-            {tab === "translations" && (
-              <VocabularyTab
-                vocabulary={data?.vocabulary ?? []}
-                selectionKind="text"
-                recordsPageSize={recordsPageSize}
-                onChange={reload}
-                runAction={runAction}
-                notify={notify}
-                sourceFilterNavigation={sourceFilterNavigation}
-                t={t}
-              />
-            )}
-            {tab === "settings" && data && (
-              <SettingsTab
-                data={data}
-                includeSensitive={includeSensitive}
-                setIncludeSensitive={setIncludeSensitive}
-                runAction={runAction}
-                notify={notify}
-                onChange={reload}
-                t={t}
-              />
-            )}
-            {tab === "about" && <AboutTab t={t} />}
-          </Box>
-        </Paper>
-      </Container>
+          </Stack>
+        </Box>
+      </Box>
+
+      <Box
+        component="main"
+        sx={{ minWidth: 1440, flex: 1, p: { xs: 2, md: 3.5 } }}
+      >
+        <Box sx={{ mx: "auto", maxWidth: 1280 }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ mb: 2.25, px: 0.25 }}
+          >
+            <Box>
+              <Typography variant="h4">{activeTabLabel}</Typography>
+            </Box>
+          </Stack>
+          <Paper variant="outlined" sx={{ minWidth: 0, overflow: "hidden" }}>
+            <Box p={{ xs: 1.5, md: 2.25 }} sx={{ overflowX: "auto" }}>
+              {tab === "footprints" && (
+                <FootprintsTab
+                  footprints={data?.footprints ?? []}
+                  recordsPageSize={recordsPageSize}
+                  onChange={reload}
+                  onOpenTabWithSourceFilter={switchTabWithSourceFilter}
+                  runAction={runAction}
+                  t={t}
+                />
+              )}
+              {tab === "highlights" && (
+                <HighlightsTab
+                  highlights={data?.highlights ?? []}
+                  recordsPageSize={recordsPageSize}
+                  onChange={reload}
+                  runAction={runAction}
+                  notify={notify}
+                  sourceFilterNavigation={sourceFilterNavigation}
+                  t={t}
+                />
+              )}
+              {tab === "vocabulary" && (
+                <VocabularyTab
+                  vocabulary={data?.vocabulary ?? []}
+                  selectionKind="word"
+                  recordsPageSize={recordsPageSize}
+                  onChange={reload}
+                  runAction={runAction}
+                  notify={notify}
+                  sourceFilterNavigation={sourceFilterNavigation}
+                  t={t}
+                />
+              )}
+              {tab === "translations" && (
+                <VocabularyTab
+                  vocabulary={data?.vocabulary ?? []}
+                  selectionKind="text"
+                  recordsPageSize={recordsPageSize}
+                  onChange={reload}
+                  runAction={runAction}
+                  notify={notify}
+                  sourceFilterNavigation={sourceFilterNavigation}
+                  t={t}
+                />
+              )}
+              {tab === "settings" && data && (
+                <SettingsTab
+                  data={data}
+                  includeSensitive={includeSensitive}
+                  setIncludeSensitive={setIncludeSensitive}
+                  runAction={runAction}
+                  notify={notify}
+                  onChange={reload}
+                  t={t}
+                />
+              )}
+              {tab === "about" && <AboutTab t={t} />}
+            </Box>
+          </Paper>
+        </Box>
+      </Box>
       <Toast toast={toast} onClose={() => setToast(undefined)} />
     </Box>
   );
+}
+
+function getSidebarTabIcon(
+  icon: ReactElement,
+  label: string,
+  collapsed: boolean,
+): ReactElement {
+  if (!collapsed) return icon;
+
+  return (
+    <Tooltip title={label} placement="right">
+      <Box component="span" sx={{ display: "inline-flex" }}>
+        {icon}
+      </Box>
+    </Tooltip>
+  );
+}
+
+function SidebarLink({
+  href,
+  icon,
+  label,
+  collapsed,
+}: {
+  href: string;
+  icon: ReactNode;
+  label: string;
+  collapsed: boolean;
+}) {
+  const button = (
+    <Button
+      component="a"
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      startIcon={icon}
+      aria-label={label}
+      sx={sidebarLinkSx(collapsed)}
+    >
+      {collapsed ? undefined : label}
+    </Button>
+  );
+
+  return collapsed ? (
+    <Tooltip title={label} placement="right">
+      {button}
+    </Tooltip>
+  ) : (
+    button
+  );
+}
+
+function sidebarLinkSx(collapsed: boolean) {
+  return {
+    minWidth: collapsed ? 40 : 0,
+    minHeight: 40,
+    justifyContent: collapsed ? "center" : "flex-start",
+    px: collapsed ? 0 : 1.25,
+    color: "#65728b",
+    fontSize: "0.81rem",
+    fontWeight: 650,
+    "&:hover": {
+      bgcolor: "#f4f7fc",
+      color: "#215ac9",
+    },
+    ".MuiButton-startIcon": {
+      m: collapsed ? 0 : undefined,
+      mr: collapsed ? 0 : 1,
+    },
+  };
+}
+
+function NavigationLabel({ label, count }: { label: string; count?: number }) {
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: "flex",
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 1,
+      }}
+    >
+      <Box component="span">{label}</Box>
+      {count !== undefined && (
+        <Box
+          component="span"
+          sx={{
+            minWidth: 20,
+            px: 0.6,
+            py: 0.1,
+            borderRadius: "5px",
+            bgcolor: "rgba(90, 111, 151, 0.12)",
+            color: "inherit",
+            fontSize: "0.69rem",
+            fontVariantNumeric: "tabular-nums",
+            lineHeight: 1.4,
+            textAlign: "center",
+          }}
+        >
+          {count}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function getTabLabel(tab: TabKey, t: Messages): string {
+  const labels: Record<TabKey, string> = {
+    footprints: t.options.tabs.footprints,
+    highlights: t.options.tabs.highlights,
+    vocabulary: t.options.tabs.vocabulary,
+    translations: t.options.tabs.translations,
+    settings: t.options.tabs.settings,
+    about: t.options.tabs.about,
+  };
+  return labels[tab];
 }
 
 function getInitialTab(): TabKey {
@@ -421,6 +712,7 @@ function isTabKey(value: string): value is TabKey {
     "footprints",
     "highlights",
     "vocabulary",
+    "translations",
     "settings",
     "about",
   ].includes(value);
@@ -1207,9 +1499,7 @@ function VocabularyTab({
           <TableRow>
             <TableCell />
             <TableCell>{recordLabel}</TableCell>
-            {!isTranslation && (
-              <TableCell>{t.options.columns.audio}</TableCell>
-            )}
+            {!isTranslation && <TableCell>{t.options.columns.audio}</TableCell>}
             <TableCell>{t.options.columns.context}</TableCell>
             <TableCell>{t.options.columns.source}</TableCell>
             <TableCell align="center">{t.options.columns.actions}</TableCell>
@@ -1321,15 +1611,18 @@ function VocabularyTab({
                           : t.options.confirmations.deleteVocabularyItem
                       }
                       onConfirm={async () => {
-                        await runAction(async () => {
-                          await sendMessage({
-                            type: "DELETE_VOCABULARY",
-                            id: item.id,
-                          });
-                          await onChange();
-                        }, isTranslation
-                          ? t.options.notices.translationDeleted
-                          : t.options.notices.vocabularyDeleted);
+                        await runAction(
+                          async () => {
+                            await sendMessage({
+                              type: "DELETE_VOCABULARY",
+                              id: item.id,
+                            });
+                            await onChange();
+                          },
+                          isTranslation
+                            ? t.options.notices.translationDeleted
+                            : t.options.notices.vocabularyDeleted,
+                        );
                       }}
                       t={t}
                     />

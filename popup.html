@@ -7,22 +7,33 @@
   </head>
   <body>
     <div class="popup">
-      <header>
-        <strong>ReMarker</strong>
-        <span id="statusText"></span>
+      <header class="popup-header">
+        <div class="brand-lockup">
+          <img class="brand-mark" src="/icons/remarker-icon.svg" alt="" />
+          <strong>ReMarker</strong>
+        </div>
+        <span class="header-mark" aria-hidden="true"></span>
       </header>
-      <label>
-        <input id="globalEnabled" type="checkbox" />
-        <span id="globalEnabledLabel"></span>
-      </label>
-      <label>
-        <input id="siteEnabled" type="checkbox" />
-        <span id="siteEnabledLabel"></span>
-      </label>
-      <label>
-        <input id="autoCloseLookupPanelOnCopy" type="checkbox" />
-        <span id="autoCloseLookupPanelOnCopyLabel"></span>
-      </label>
+
+      <section class="site-card" aria-live="polite">
+        <span class="site-icon" aria-hidden="true"></span>
+        <span id="statusText"></span>
+      </section>
+
+      <section class="controls" aria-label="ReMarker controls">
+        <label class="control-row">
+          <span id="globalEnabledLabel"></span>
+          <input id="globalEnabled" type="checkbox" />
+        </label>
+        <label class="control-row">
+          <span id="siteEnabledLabel"></span>
+          <input id="siteEnabled" type="checkbox" />
+        </label>
+        <label class="control-row">
+          <span id="autoCloseLookupPanelOnCopyLabel"></span>
+          <input id="autoCloseLookupPanelOnCopy" type="checkbox" />
+        </label>
+      </section>
       <div class="popup-actions">
         <button id="addFootprint" type="button"></button>
         <button id="openOptions" type="button"></button>

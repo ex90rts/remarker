@@ -371,7 +371,6 @@ function createOverlay(): void {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: #17202a;
       background: #ffffff;
-      border: 1px solid rgba(15, 23, 42, 0.16);
       box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
       border-radius: 8px;
       display: none;
@@ -381,9 +380,13 @@ function createOverlay(): void {
       gap: 4px;
       padding: 6px;
       align-items: center;
+      box-shadow:
+        0 12px 30px rgba(15, 23, 42, 0.2),
+        0 2px 8px rgba(15, 23, 42, 0.08);
     }
     .toolbar.visible { display: flex; }
     .panel {
+      border: 1px solid rgba(15, 23, 42, 0.16);
       width: min(420px, calc(100vw - 32px));
       max-height: 360px;
       overflow: auto;
