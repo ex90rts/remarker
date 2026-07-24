@@ -56,6 +56,11 @@ export const es: Messages = {
       settings: "Ajustes",
       about: "Acerca de",
     },
+    sidebar: {
+      reportIssue: "Informar de un problema",
+      collapse: "Contraer",
+      expand: "Expandir",
+    },
     columns: {
       pageTitle: "Título de la página",
       site: "Sitio",
@@ -203,19 +208,28 @@ export const es: Messages = {
       },
       releases: {
         title: "Releases",
-        version: "1.0.0",
-        summary:
-          "La primera versión estable se centra en leer, anotar, consultar palabras con IA y conservar el contexto de aprendizaje entre visitas.",
-        feature1:
-          "Resalta pasajes memorables en páginas web y gestiona esos resaltados en un solo lugar.",
-        feature2:
-          "Usa un modelo de IA para explicar palabras seleccionadas en contexto y guardarlas automáticamente en el vocabulario.",
-        feature3:
-          "Al volver a una página, restaura resaltados y subrayados de vocabulario, con traducciones disponibles desde la página.",
-        feature4:
-          "Reproduce la pronunciación de palabras mediante audio de diccionario configurado o síntesis de voz del navegador como respaldo.",
-        feature5:
-          "Importa y exporta los datos clave de aprendizaje para copias de seguridad, repaso y migración.",
+        v1_1: {
+          version: "1.1.0",
+          summary: "Mejora la interfaz y agrega huellas de las páginas visitadas.",
+          feature1: "Mejora los estilos de la extensión y la consola de gestión.",
+          feature2:
+            "Agrega huellas para recopilar y gestionar las páginas visitadas durante la lectura.",
+        },
+        v1_0: {
+          version: "1.0.0",
+          summary:
+            "La primera versión estable se centra en leer, anotar, consultar palabras con IA y conservar el contexto de aprendizaje entre visitas.",
+          feature1:
+            "Resalta pasajes memorables en páginas web y gestiona esos resaltados en un solo lugar.",
+          feature2:
+            "Usa un modelo de IA para explicar palabras seleccionadas en contexto y guardarlas automáticamente en el vocabulario.",
+          feature3:
+            "Al volver a una página, restaura resaltados y subrayados de vocabulario, con traducciones disponibles desde la página.",
+          feature4:
+            "Reproduce la pronunciación de palabras mediante audio de diccionario configurado o síntesis de voz del navegador como respaldo.",
+          feature5:
+            "Importa y exporta los datos clave de aprendizaje para copias de seguridad, repaso y migración.",
+        },
       },
     },
   },

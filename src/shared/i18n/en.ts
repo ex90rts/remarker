@@ -54,6 +54,11 @@ export const en = {
       settings: "Settings",
       about: "About",
     },
+    sidebar: {
+      reportIssue: "Report an issue",
+      collapse: "Collapse sidebar",
+      expand: "Expand sidebar",
+    },
     columns: {
       pageTitle: "Page Title",
       site: "Site",
@@ -198,19 +203,27 @@ export const en = {
       },
       releases: {
         title: "Releases",
-        version: "1.0.0",
-        summary:
-          "The first stable release focuses on reading, annotating, looking up words with AI, and preserving the learning context across visits.",
-        feature1:
-          "Highlight memorable passages on web pages and manage those highlights in one place.",
-        feature2:
-          "Use an AI model to explain selected words in context and automatically save them to the vocabulary list.",
-        feature3:
-          "When revisiting a page, restore previous highlights and vocabulary underlines, with translations available from the page.",
-        feature4:
-          "Play word pronunciation through configured dictionary audio or browser speech synthesis fallback.",
-        feature5:
-          "Import and export key learning data for backup, review, and migration.",
+        v1_1: {
+          version: "1.1.0",
+          summary: "Refines the interface and adds footprints for visited pages.",
+          feature1: "Refines the extension and management console styles.",
+          feature2: "Adds footprints to collect and manage pages visited during reading.",
+        },
+        v1_0: {
+          version: "1.0.0",
+          summary:
+            "The first stable release focuses on reading, annotating, looking up words with AI, and preserving the learning context across visits.",
+          feature1:
+            "Highlight memorable passages on web pages and manage those highlights in one place.",
+          feature2:
+            "Use an AI model to explain selected words in context and automatically save them to the vocabulary list.",
+          feature3:
+            "When revisiting a page, restore previous highlights and vocabulary underlines, with translations available from the page.",
+          feature4:
+            "Play word pronunciation through configured dictionary audio or browser speech synthesis fallback.",
+          feature5:
+            "Import and export key learning data for backup, review, and migration.",
+        },
       },
     },
   },

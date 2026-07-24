@@ -192,7 +192,7 @@ export function App() {
   >();
   const language = data?.settings.ui.language ?? detectBrowserLanguage();
   const t = getMessages(language);
-  const isNarrowSidebar = useMediaQuery("(max-width:1023.95px)");
+  const isNarrowSidebar = useMediaQuery("(max-width:1279.95px)");
   const sidebarCollapsed = manuallyCollapsed || isNarrowSidebar;
 
   useEffect(() => {
@@ -304,6 +304,7 @@ export function App() {
                 display: sidebarCollapsed ? "none" : "block",
                 fontSize: "1.5rem",
                 fontWeight: 800,
+                fontFamily: 'system-ui, "Pingfang SC"',
                 background:
                   "linear-gradient(100deg, #00319d 0%, #0042d3 28%, #d946ef 60%, #06b6d4 100%)",
                 WebkitBackgroundClip: "text",
@@ -468,34 +469,26 @@ export function App() {
             <SidebarLink
               href={REPORT_ISSUE_URL}
               icon={<Bug size={16} />}
-              label="Report an issue"
+              label={t.options.sidebar.reportIssue}
               collapsed={sidebarCollapsed}
             />
             {!isNarrowSidebar && (
-              <Tooltip
-                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                placement="right"
-              >
-                <IconButton
-                  aria-label={
-                    sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
-                  }
-                  onClick={() =>
-                    setManuallyCollapsed((collapsed) => !collapsed)
-                  }
-                  sx={{
-                    alignSelf: sidebarCollapsed ? "center" : "flex-start",
-                    color: "#65728b",
-                    "&:hover": { color: "#215ac9" },
-                  }}
-                >
-                  {sidebarCollapsed ? (
-                    <PanelLeftOpen size={17} />
+              <SidebarAction
+                icon={
+                  sidebarCollapsed ? (
+                    <PanelLeftOpen size={16} />
                   ) : (
-                    <PanelLeftClose size={17} />
-                  )}
-                </IconButton>
-              </Tooltip>
+                    <PanelLeftClose size={16} />
+                  )
+                }
+                label={
+                  sidebarCollapsed
+                    ? t.options.sidebar.expand
+                    : t.options.sidebar.collapse
+                }
+                collapsed={sidebarCollapsed}
+                onClick={() => setManuallyCollapsed((collapsed) => !collapsed)}
+              />
             )}
           </Stack>
         </Box>
@@ -503,9 +496,16 @@ export function App() {
 
       <Box
         component="main"
-        sx={{ minWidth: 1440, flex: 1, p: { xs: 2, md: 3.5 } }}
+        sx={{
+          width: "100%",
+          minWidth: 1048,
+          maxWidth: 1440,
+          margin: "0 auto",
+          flex: 1,
+          p: { xs: 2, md: 3.5 },
+        }}
       >
-        <Box sx={{ mx: "auto", maxWidth: 1280 }}>
+        <Box sx={{ width: "100%", mx: "auto" }}>
           <Stack
             direction="row"
             alignItems="center"
@@ -619,6 +619,37 @@ function SidebarLink({
       rel="noreferrer"
       startIcon={icon}
       aria-label={label}
+      sx={sidebarLinkSx(collapsed)}
+    >
+      {collapsed ? undefined : label}
+    </Button>
+  );
+
+  return collapsed ? (
+    <Tooltip title={label} placement="right">
+      {button}
+    </Tooltip>
+  ) : (
+    button
+  );
+}
+
+function SidebarAction({
+  icon,
+  label,
+  collapsed,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  collapsed: boolean;
+  onClick: () => void;
+}) {
+  const button = (
+    <Button
+      startIcon={icon}
+      aria-label={label}
+      onClick={onClick}
       sx={sidebarLinkSx(collapsed)}
     >
       {collapsed ? undefined : label}
@@ -944,10 +975,10 @@ function FootprintsTab({
         <colgroup>
           <col style={{ width: 320 }} />
           <col style={{ width: 160 }} />
-          <col style={{ width: 190 }} />
-          <col style={{ width: 110 }} />
-          <col style={{ width: 110 }} />
-          <col style={{ width: 120 }} />
+          <col style={{ width: 180 }} />
+          <col style={{ width: 80 }} />
+          <col style={{ width: 80 }} />
+          <col style={{ width: 100 }} />
         </colgroup>
         <TableHead>
           <TableRow>
@@ -1269,7 +1300,12 @@ function HighlightsTab({
             pageItems.map((highlight) => (
               <TableRow key={highlight.id}>
                 <TableCell sx={{ maxWidth: 420 }}>
-                  <Typography component="div" variant="body2">
+                  <Typography
+                    component="div"
+                    variant="body2"
+                    title={highlight.selectedText}
+                    sx={twoLineClampSx}
+                  >
                     {highlight.selectedText}
                   </Typography>
                   <Typography
@@ -1840,12 +1876,26 @@ function RecordsTablePagination({
 }
 
 function AboutTab({ t }: { t: Messages }) {
-  const releaseFeatures = [
-    t.options.about.releases.feature1,
-    t.options.about.releases.feature2,
-    t.options.about.releases.feature3,
-    t.options.about.releases.feature4,
-    t.options.about.releases.feature5,
+  const releases = [
+    {
+      version: t.options.about.releases.v1_1.version,
+      summary: t.options.about.releases.v1_1.summary,
+      features: [
+        t.options.about.releases.v1_1.feature1,
+        t.options.about.releases.v1_1.feature2,
+      ],
+    },
+    {
+      version: t.options.about.releases.v1_0.version,
+      summary: t.options.about.releases.v1_0.summary,
+      features: [
+        t.options.about.releases.v1_0.feature1,
+        t.options.about.releases.v1_0.feature2,
+        t.options.about.releases.v1_0.feature3,
+        t.options.about.releases.v1_0.feature4,
+        t.options.about.releases.v1_0.feature5,
+      ],
+    },
   ];
 
   return (
@@ -1869,25 +1919,29 @@ function AboutTab({ t }: { t: Messages }) {
         <Typography variant="h6" gutterBottom>
           {t.options.about.releases.title}
         </Typography>
-        <Stack spacing={1}>
-          <Typography variant="subtitle1" fontWeight={700}>
-            {t.options.about.releases.version}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {t.options.about.releases.summary}
-          </Typography>
-          <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
-            {releaseFeatures.map((feature) => (
-              <Typography
-                component="li"
-                variant="body2"
-                key={feature}
-                sx={{ mb: 0.75 }}
-              >
-                {feature}
+        <Stack spacing={2.5}>
+          {releases.map((release) => (
+            <Stack spacing={1} key={release.version}>
+              <Typography variant="subtitle1" fontWeight={700}>
+                {release.version}
               </Typography>
-            ))}
-          </Box>
+              <Typography variant="body2" color="text.secondary">
+                {release.summary}
+              </Typography>
+              <Box component="ol" sx={{ m: 0, pl: 2.5 }}>
+                {release.features.map((feature) => (
+                  <Typography
+                    component="li"
+                    variant="body2"
+                    key={feature}
+                    sx={{ mb: 0.75 }}
+                  >
+                    {feature}
+                  </Typography>
+                ))}
+              </Box>
+            </Stack>
+          ))}
         </Stack>
       </Box>
     </Stack>
