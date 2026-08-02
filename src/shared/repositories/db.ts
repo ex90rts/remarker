@@ -1,12 +1,21 @@
 import type {
   AppSettings,
+  AudioCacheRecord,
   FootprintRecord,
+  FootprintListItem,
   HighlightRecord,
   LlmProvider,
   LlmProviderConfig,
   SiteSetting,
   VocabularyRecord
 } from "../types";
+import type { DataQuery, QueryResult } from "../messages";
+import {
+  getReviewDayCutoff,
+  normalizeVocabularyReview,
+  scheduleVocabularyReview,
+  type ReviewRating,
+} from "../review";
 import { detectBrowserLanguage } from "../i18n";
 import {
   DEFAULT_SETTINGS,
@@ -15,6 +24,7 @@ import {
   createDefaultLlmProviderConfigs,
   getDefaultPromptTemplate,
   isDefaultPromptTemplate,
+  migrateLegacyPromptTemplate,
   normalizeLlmProvider,
   normalizeLlmProviderConfig,
   normalizeRecordsPageSize
@@ -27,7 +37,8 @@ type StoreName =
   | "highlights"
   | "vocabulary"
   | "footprints"
-  | "siteSettings";
+  | "siteSettings"
+  | "audioCache";
 
 let dbPromise: Promise<IDBDatabase> | undefined;
 
@@ -37,7 +48,7 @@ export function openRemarkerDb(): Promise<IDBDatabase> {
   dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, SCHEMA_VERSION);
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
       const transaction = request.transaction;
 
@@ -52,6 +63,7 @@ export function openRemarkerDb(): Promise<IDBDatabase> {
         ensureIndex(highlightStore, "urlKey", "urlKey", { unique: false });
         ensureIndex(highlightStore, "createdAt", "createdAt", { unique: false });
         ensureIndex(highlightStore, "status", "status", { unique: false });
+        ensureIndex(highlightStore, "updatedAt", "updatedAt", { unique: false });
       }
 
       const vocabularyStore = db.objectStoreNames.contains("vocabulary")
@@ -64,6 +76,12 @@ export function openRemarkerDb(): Promise<IDBDatabase> {
         ensureIndex(vocabularyStore, "urlKey", "urlKey", { unique: false });
         ensureIndex(vocabularyStore, "cacheKey", "cacheKey", { unique: true });
         ensureIndex(vocabularyStore, "createdAt", "createdAt", { unique: false });
+        ensureIndex(vocabularyStore, "updatedAt", "updatedAt", { unique: false });
+        ensureIndex(vocabularyStore, "nextReviewAt", "nextReviewAt", { unique: false });
+        ensureIndex(vocabularyStore, "selectionKindCreatedAt", ["selectionKind", "createdAt"], {
+          unique: false,
+        });
+        if (event.oldVersion < 5) backfillVocabularyReview(vocabularyStore);
       }
 
       const footprintStore = db.objectStoreNames.contains("footprints")
@@ -78,6 +96,13 @@ export function openRemarkerDb(): Promise<IDBDatabase> {
 
       if (!db.objectStoreNames.contains("siteSettings")) {
         db.createObjectStore("siteSettings", { keyPath: "hostname" });
+      }
+
+      const audioCacheStore = db.objectStoreNames.contains("audioCache")
+        ? transaction?.objectStore("audioCache")
+        : db.createObjectStore("audioCache", { keyPath: "key" });
+      if (audioCacheStore) {
+        ensureIndex(audioCacheStore, "lastAccessedAt", "lastAccessedAt", { unique: false });
       }
 
       if (db.objectStoreNames.contains("explanations")) {
@@ -99,12 +124,25 @@ function tx(storeName: StoreName, mode: IDBTransactionMode): Promise<IDBObjectSt
 function ensureIndex(
   store: IDBObjectStore,
   name: string,
-  keyPath: string,
+  keyPath: string | string[],
   options?: IDBIndexParameters,
 ) {
   if (!store.indexNames.contains(name)) {
     store.createIndex(name, keyPath, options);
   }
+}
+
+function backfillVocabularyReview(store: IDBObjectStore): void {
+  const request = store.openCursor();
+  request.onsuccess = () => {
+    const cursor = request.result;
+    if (!cursor) return;
+    const record = cursor.value as VocabularyRecord;
+    if ((record.selectionKind ?? "word") === "word") {
+      cursor.update(normalizeVocabularyReview(record));
+    }
+    cursor.continue();
+  };
 }
 
 function requestToPromise<T>(request: IDBRequest<T>): Promise<T> {
@@ -161,7 +199,238 @@ export async function getHighlightsForUrl(urlKey: string): Promise<HighlightReco
 export async function getVocabularyByCacheKey(cacheKey: string): Promise<VocabularyRecord | undefined> {
   const store = await tx("vocabulary", "readonly");
   const index = store.index("cacheKey");
-  return requestToPromise<VocabularyRecord | undefined>(index.get(cacheKey));
+  const record = await requestToPromise<VocabularyRecord | undefined>(index.get(cacheKey));
+  return record ? normalizeVocabularyReview(record) : undefined;
+}
+
+export async function getVocabularyForUrl(urlKey: string): Promise<VocabularyRecord[]> {
+  const store = await tx("vocabulary", "readonly");
+  const records = await requestToPromise<VocabularyRecord[]>(store.index("urlKey").getAll(urlKey));
+  return records.map(normalizeVocabularyReview);
+}
+
+export async function getReviewQueue(now: string, limit = 100): Promise<VocabularyRecord[]> {
+  const store = await tx("vocabulary", "readonly");
+  const range = IDBKeyRange.upperBound(getReviewDayCutoff(now), true);
+  const records = await requestToPromise<VocabularyRecord[]>(
+    store.index("nextReviewAt").getAll(range),
+  );
+  return records
+    .filter((record) => (record.selectionKind ?? "word") === "word")
+    .map(normalizeVocabularyReview)
+    .sort((left, right) =>
+      left.nextReviewAt.localeCompare(right.nextReviewAt) ||
+      left.createdAt.localeCompare(right.createdAt),
+    )
+    .slice(0, Math.max(1, limit));
+}
+
+export async function countDueVocabulary(now: string): Promise<number> {
+  const store = await tx("vocabulary", "readonly");
+  const range = IDBKeyRange.upperBound(getReviewDayCutoff(now), true);
+  return requestToPromise(store.index("nextReviewAt").count(range));
+}
+
+export async function getNextVocabularyReview(): Promise<VocabularyRecord | undefined> {
+  const store = await tx("vocabulary", "readonly");
+  const request = store.index("nextReviewAt").openCursor();
+  return new Promise((resolve, reject) => {
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve(undefined);
+        return;
+      }
+      const record = cursor.value as VocabularyRecord;
+      if ((record.selectionKind ?? "word") === "word") {
+        resolve(normalizeVocabularyReview(record));
+        return;
+      }
+      cursor.continue();
+    };
+  });
+}
+
+export async function submitVocabularyReview(
+  id: string,
+  rating: ReviewRating,
+  reviewedAt: string,
+): Promise<VocabularyRecord> {
+  const store = await tx("vocabulary", "readwrite");
+  const current = await requestToPromise<VocabularyRecord | undefined>(store.get(id));
+  if (!current) throw new Error("Vocabulary record was not found.");
+  if ((current.selectionKind ?? "word") !== "word") {
+    throw new Error("Translation records cannot be reviewed.");
+  }
+  const updated = scheduleVocabularyReview(current, rating, reviewedAt);
+  await requestToPromise(store.put(updated));
+  return updated;
+}
+
+export async function getAudioCache(key: string): Promise<AudioCacheRecord | undefined> {
+  return getFromStore<AudioCacheRecord>("audioCache", key);
+}
+
+export async function saveAudioCache(record: AudioCacheRecord): Promise<void> {
+  await putInStore("audioCache", record);
+}
+
+export async function deleteAudioCache(key: string): Promise<void> {
+  await deleteFromStore("audioCache", key);
+}
+
+export async function updateHighlightStatuses(
+  updates: Array<{ id: string; status: HighlightRecord["status"] }>,
+): Promise<HighlightRecord[]> {
+  const store = await tx("highlights", "readwrite");
+  const updatedRecords: HighlightRecord[] = [];
+  const updatedAt = new Date().toISOString();
+  for (const update of updates) {
+    const current = await requestToPromise<HighlightRecord | undefined>(
+      store.get(update.id),
+    );
+    if (!current) continue;
+    const updated = { ...current, status: update.status, updatedAt };
+    await requestToPromise(store.put(updated));
+    updatedRecords.push(updated);
+  }
+  return updatedRecords;
+}
+
+export function queryHighlights(query: DataQuery): Promise<QueryResult<HighlightRecord>> {
+  return queryStoreByCreatedAt<HighlightRecord>("highlights", query, (record) =>
+    includesQuery(record.selectedText, query.word) &&
+    includesQuery(`${record.sourceTitle} ${record.sourceUrl}`, query.source) &&
+    (!query.color || record.color === query.color),
+  );
+}
+
+export async function queryVocabulary(
+  query: DataQuery,
+): Promise<QueryResult<VocabularyRecord>> {
+  const selectionKind = query.selectionKind ?? "word";
+  const result = await queryStoreByCreatedAt<VocabularyRecord>(
+    "vocabulary",
+    query,
+    (record) =>
+      (record.selectionKind ?? "word") === selectionKind &&
+      includesQuery(record.word, query.word) &&
+      includesQuery(record.contextSentence, query.context) &&
+      includesQuery(`${record.sourceTitle} ${record.sourceUrl}`, query.source),
+    "selectionKindCreatedAt",
+    IDBKeyRange.bound([selectionKind, ""], [selectionKind, "\uffff"]),
+  );
+  return { ...result, items: result.items.map(normalizeVocabularyReview) };
+}
+
+export async function queryFootprints(query: DataQuery): Promise<QueryResult<FootprintListItem>> {
+  const result = await queryStoreByCreatedAt<FootprintRecord>("footprints", query, (record) =>
+    !record.archivedAt &&
+    (!query.starredOnly || record.starred) &&
+    includesQuery(record.sourceTitle || record.sourceUrl, query.title) &&
+    includesQuery(record.siteName, query.site) &&
+    includesQuery(`${record.sourceTitle} ${record.siteName} ${record.sourceUrl}`, query.source),
+  );
+  const items = await Promise.all(result.items.map(async (record) => {
+    const [highlightCount, lookupCount] = await Promise.all([
+      countByIndex("highlights", "urlKey", record.urlKey),
+      countByIndex("vocabulary", "urlKey", record.urlKey),
+    ]);
+    return {
+      ...record,
+      browsedAt: record.updatedAt || record.createdAt,
+      highlightCount,
+      lookupCount,
+    };
+  }));
+  return { items, total: result.total };
+}
+
+async function countByIndex(
+  storeName: "highlights" | "vocabulary",
+  indexName: "urlKey",
+  key: IDBValidKey,
+): Promise<number> {
+  const store = await tx(storeName, "readonly");
+  return requestToPromise(store.index(indexName).count(key));
+}
+
+export async function getOptionsDataCounts(): Promise<{
+  footprints: number;
+  highlights: number;
+  vocabulary: number;
+  translations: number;
+}> {
+  const [footprints, highlights, vocabulary, translations] = await Promise.all([
+    countUnarchivedFootprints(),
+    countStore("highlights"),
+    countVocabularyByKind("word"),
+    countVocabularyByKind("text"),
+  ]);
+  return { footprints, highlights, vocabulary, translations };
+}
+
+async function countStore(storeName: "highlights"): Promise<number> {
+  const store = await tx(storeName, "readonly");
+  return requestToPromise(store.count());
+}
+
+async function countVocabularyByKind(
+  selectionKind: "word" | "text",
+): Promise<number> {
+  const store = await tx("vocabulary", "readonly");
+  const range = IDBKeyRange.bound(
+    [selectionKind, ""],
+    [selectionKind, "\uffff"],
+  );
+  return requestToPromise(store.index("selectionKindCreatedAt").count(range));
+}
+
+async function countUnarchivedFootprints(): Promise<number> {
+  const store = await tx("footprints", "readonly");
+  const [total, archived] = await Promise.all([
+    requestToPromise(store.count()),
+    requestToPromise(store.index("archivedAt").count()),
+  ]);
+  return total - archived;
+}
+
+async function queryStoreByCreatedAt<T extends { createdAt: string }>(
+  storeName: "highlights" | "vocabulary" | "footprints",
+  query: DataQuery,
+  matches: (record: T) => boolean,
+  indexName = "createdAt",
+  range: IDBKeyRange | null = null,
+): Promise<QueryResult<T>> {
+  const store = await tx(storeName, "readonly");
+  const index = store.index(indexName);
+  const start = Math.max(0, query.page) * query.pageSize;
+  const items: T[] = [];
+  let total = 0;
+  await new Promise<void>((resolve, reject) => {
+    const request = index.openCursor(range, "prev");
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve();
+        return;
+      }
+      const record = cursor.value as T;
+      if (matches(record)) {
+        if (total >= start && items.length < query.pageSize) items.push(record);
+        total += 1;
+      }
+      cursor.continue();
+    };
+  });
+  return { items, total };
+}
+
+function includesQuery(value: string | undefined, query: string | undefined): boolean {
+  const normalized = query?.trim().toLocaleLowerCase();
+  return !normalized || (value ?? "").toLocaleLowerCase().includes(normalized);
 }
 
 export async function getFootprint(urlKey: string): Promise<FootprintRecord | undefined> {
@@ -190,7 +459,13 @@ export async function importSnapshot(snapshot: {
   if (snapshot.settings) await saveSettings(snapshot.settings);
   for (const record of snapshot.footprints ?? []) await putInStore("footprints", record);
   for (const record of snapshot.highlights ?? []) await putInStore("highlights", record);
-  for (const record of snapshot.vocabulary ?? []) await putInStore("vocabulary", record);
+  for (const record of snapshot.vocabulary ?? []) {
+    const incoming = normalizeVocabularyReview(record);
+    const current = await getFromStore<VocabularyRecord>("vocabulary", incoming.id);
+    if (!current || current.updatedAt <= incoming.updatedAt) {
+      await putInStore("vocabulary", incoming);
+    }
+  }
   for (const record of snapshot.siteSettings ?? []) await saveSiteSetting(record);
 }
 
@@ -198,6 +473,7 @@ type LegacyLlmConfig = Partial<AppSettings["llm"]> & {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  promptTemplate?: string;
   providers?: Partial<Record<LlmProvider, Partial<LlmProviderConfig>>>;
 };
 
@@ -227,11 +503,18 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
     providers,
     temperature: incomingLlm?.temperature ?? DEFAULT_SETTINGS.llm.temperature,
     timeoutMs: incomingLlm?.timeoutMs ?? DEFAULT_SETTINGS.llm.timeoutMs,
-    promptTemplate:
-      incomingLlm?.promptTemplate &&
-      !isDefaultPromptTemplate(incomingLlm.promptTemplate)
-        ? incomingLlm.promptTemplate
-        : getDefaultPromptTemplate(language)
+    lookupPromptTemplate: normalizePromptTemplate(
+      "lookup",
+      incomingLlm?.lookupPromptTemplate,
+      incomingLlm?.promptTemplate,
+      language,
+    ),
+    translationPromptTemplate: normalizePromptTemplate(
+      "translation",
+      incomingLlm?.translationPromptTemplate,
+      incomingLlm?.promptTemplate,
+      language,
+    ),
   };
 
   return {
@@ -242,6 +525,21 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
       language,
       ...(settings?.ui ?? {}),
       recordsPageSize: normalizeRecordsPageSize(settings?.ui?.recordsPageSize)
-    }
+    },
+    export: { ...DEFAULT_SETTINGS.export, ...(settings?.export ?? {}) },
   };
+}
+
+function normalizePromptTemplate(
+  type: "lookup" | "translation",
+  promptTemplate: string | undefined,
+  legacyPromptTemplate: string | undefined,
+  language: AppSettings["ui"]["language"],
+): string {
+  if (promptTemplate) {
+    return isDefaultPromptTemplate(type, promptTemplate)
+      ? getDefaultPromptTemplate(type, language)
+      : promptTemplate;
+  }
+  return migrateLegacyPromptTemplate(type, legacyPromptTemplate, language);
 }

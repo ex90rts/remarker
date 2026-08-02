@@ -23,6 +23,8 @@ export const es: Messages = {
     addFootprint: "Agregar a huellas",
     addedFootprint: "Ya está en huellas",
     managePage: "Consola de gestión",
+    reviewDue: "{{count}} palabras para repasar",
+    openReview: "Empezar repaso",
   },
   content: {
     copy: "Copiar",
@@ -61,6 +63,21 @@ export const es: Messages = {
       collapse: "Contraer",
       expand: "Expandir",
     },
+    activity: {
+      title: "Actividad de aprendizaje · Últimos 6 meses",
+      less: "Menos",
+      more: "Más",
+      reviewTitle: "Repaso de hoy",
+      reviewProgress: "{{completed}} completadas · {{total}} para hoy",
+      startReview: "Empezar repaso",
+      reviewCompleted: "🎉 Completado ✨",
+      reviewEmpty:
+        "Usa ReMarker para consultar palabras mientras lees páginas en otros idiomas. Los resultados se guardarán automáticamente como vocabulario y se programarán para repaso.",
+      daySummary: "{{date}}: {{total}} actividades",
+      highlightSummary: "{{count}} resaltados",
+      vocabularySummary: "{{count}} palabras",
+      translationSummary: "{{count}} traducciones",
+    },
     columns: {
       pageTitle: "Título de la página",
       site: "Sitio",
@@ -76,6 +93,8 @@ export const es: Messages = {
       original: "Original",
       context: "Contexto",
       audio: "Audio",
+      note: "Nota",
+      hasNoteSuffix: ", Con nota",
     },
     filters: {
       allColors: "Todos los colores",
@@ -87,6 +106,7 @@ export const es: Messages = {
       highlights: "No hay resaltados para mostrar.",
       vocabulary: "No hay elementos de vocabulario para mostrar.",
       translations: "No hay traducciones para mostrar.",
+      note: "Aún no hay nota",
     },
     actions: {
       starFootprint: "Marcar huella",
@@ -94,6 +114,11 @@ export const es: Messages = {
       archiveFootprint: "Archivar huella",
       copyHighlightedText: "Copiar texto resaltado",
       deleteHighlight: "Eliminar resaltado",
+      expandHighlight: "Expandir resaltado",
+      collapseHighlight: "Contraer resaltado",
+      addHighlightNote: "Añadir nota",
+      editHighlightNote: "Editar nota",
+      saveHighlightNote: "Guardar nota",
       expandTranslation: "Expandir explicación",
       collapseTranslation: "Contraer explicación",
       speakWord: "Pronunciar {{word}}",
@@ -106,6 +131,8 @@ export const es: Messages = {
       importJson: "Importar JSON",
       saveSettings: "Guardar ajustes",
       restoreDefault: "Restaurar valor predeterminado",
+      test: "Probar",
+      testing: "Probando…",
     },
     confirmations: {
       archiveFootprint:
@@ -118,6 +145,8 @@ export const es: Messages = {
       llm: "LLM",
       llmCostNotice:
         "Nota: usar un LLM para traducir o consultar palabras puede generar costes, según el proveedor elegido. Configura y guarda tu clave con cuidado.",
+      llmOnboardingNotice:
+        "La consulta de palabras y la traducción necesitan un LLM. Configúralo primero.",
       provider: "Proveedor",
       providerHelp:
         "La traducción consume poco coste; prioriza la velocidad de respuesta de la API.",
@@ -147,8 +176,13 @@ export const es: Messages = {
       temperature: "Temperature",
       timeoutMs: "Tiempo de espera ms",
       promptTemplate: "Plantilla de prompt",
+      promptTemplateType: "Tipo de plantilla de prompt",
+      promptTemplateTypes: {
+        lookup: "Consulta de palabras",
+        translation: "Traducción",
+      },
       promptTemplateHelp:
-        "Variables disponibles: {{task}}, {{selection}}, {{context}}",
+        "Variables disponibles: {{selection}}, {{context}}",
       behavior: "Comportamiento",
       autoCloseLookupPanelOnCopy:
         "Cerrar automáticamente el popup de búsqueda después de copiar",
@@ -175,6 +209,7 @@ export const es: Messages = {
       footprintUnstarred: "Se quitó la estrella.",
       footprintArchived: "Huella archivada.",
       highlightDeleted: "Resaltado eliminado.",
+      highlightNoteSaved: "Nota del resaltado guardada.",
       vocabularyDeleted: "Elemento de vocabulario eliminado.",
       translationDeleted: "Traducción eliminada.",
       copied: "Copiado.",
@@ -182,10 +217,14 @@ export const es: Messages = {
       markdownExported: "Markdown exportado.",
       promptRestored: "Prompt predeterminado restaurado.",
       pronunciationStarted: "Pronunciación iniciada.",
+      llmConnectionSucceeded:
+        "La prueba de conexión con el LLM se realizó correctamente.",
     },
     errors: {
       promptTemplateMissingVariables:
         "A la plantilla de prompt le faltan variables obligatorias: {{variables}}",
+      llmConfigRequired: "Configuración obligatoria: {{fields}}.",
+      llmConnectionFailed: "Falló la prueba de conexión con el LLM: {{reason}}",
     },
     statusDescriptions: {
       active: "Este resaltado se restauró en la página fuente.",
@@ -202,12 +241,25 @@ export const es: Messages = {
       untitled: "Sin título",
     },
     about: {
-      plan: {
-        title: "Plan",
-        body: "Las próximas funciones planificadas son un calendario de repaso de vocabulario basado en la curva del olvido, para convertir búsquedas rápidas en memoria a largo plazo, y sincronización de datos entre dispositivos.",
-      },
       releases: {
         title: "Releases",
+        v1_2: {
+          version: "1.2.0",
+          summary:
+            "Agrega el repaso de vocabulario y notas en los resaltados, junto con numerosas mejoras de detalle.",
+          feature1:
+            "Agrega el repaso de vocabulario basado en la curva del olvido.",
+          feature2: "Agrega notas a los resaltados.",
+          feature3:
+            "Agrega un mapa de actividad de aprendizaje a Huellas.",
+          feature4:
+            "Agrega formatos de exportación de datos diferenciados para Obsidian y Notion.",
+          feature5:
+            "Permite consultar palabras dentro de un texto resaltado al mismo tiempo.",
+          feature6:
+            "Corrige la posición de la barra de herramientas de resaltado y selección de palabras.",
+          feature7: "Incluye otras mejoras de estilo y funcionalidad.",
+        },
         v1_1: {
           version: "1.1.0",
           summary: "Mejora la interfaz y agrega huellas de las páginas visitadas.",

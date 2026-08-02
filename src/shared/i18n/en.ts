@@ -21,6 +21,8 @@ export const en = {
     addFootprint: "Add to footprints",
     addedFootprint: "Added to footprints",
     managePage: "Open manage console",
+    reviewDue: "{{count}} words due for review",
+    openReview: "Start review",
   },
   content: {
     copy: "Copy",
@@ -59,6 +61,21 @@ export const en = {
       collapse: "Collapse sidebar",
       expand: "Expand sidebar",
     },
+    activity: {
+      title: "Learning activity · Last 6 months",
+      less: "Less",
+      more: "More",
+      reviewTitle: "Today's review",
+      reviewProgress: "{{completed}} completed · {{total}} due today",
+      startReview: "Start review",
+      reviewCompleted: "🎉 Completed ✨",
+      reviewEmpty:
+        "Use ReMarker to look up words while reading foreign-language pages. Lookup results are automatically saved as vocabulary and scheduled for review.",
+      daySummary: "{{date}}: {{total}} activities",
+      highlightSummary: "{{count}} highlights",
+      vocabularySummary: "{{count}} words",
+      translationSummary: "{{count}} translations",
+    },
     columns: {
       pageTitle: "Page Title",
       site: "Site",
@@ -74,6 +91,8 @@ export const en = {
       original: "Original",
       context: "Context",
       audio: "Audio",
+      note: "Note",
+      hasNoteSuffix: ", Has note",
     },
     filters: {
       allColors: "All colors",
@@ -85,6 +104,7 @@ export const en = {
       highlights: "No highlights to show.",
       vocabulary: "No vocabulary items to show.",
       translations: "No translations to show.",
+      note: "No note yet",
     },
     actions: {
       starFootprint: "Star footprint",
@@ -92,6 +112,11 @@ export const en = {
       archiveFootprint: "Archive footprint",
       copyHighlightedText: "Copy highlighted text",
       deleteHighlight: "Delete highlight",
+      expandHighlight: "Expand highlight",
+      collapseHighlight: "Collapse highlight",
+      addHighlightNote: "Add note",
+      editHighlightNote: "Edit note",
+      saveHighlightNote: "Save note",
       expandTranslation: "Expand translation",
       collapseTranslation: "Collapse translation",
       speakWord: "Speak {{word}}",
@@ -104,6 +129,8 @@ export const en = {
       importJson: "Import JSON",
       saveSettings: "Save settings",
       restoreDefault: "Restore default",
+      test: "Test",
+      testing: "Testing…",
     },
     confirmations: {
       archiveFootprint:
@@ -116,6 +143,8 @@ export const en = {
       llm: "LLM",
       llmCostNotice:
         "Note: Using an LLM for translation or word lookup may incur costs, depending on the selected provider. Configure and save your key carefully.",
+      llmOnboardingNotice:
+        "Word lookup and translation require LLM support. Configure it first.",
       provider: "Provider",
       providerHelp:
         "Translation itself is low-cost, so prioritize API response speed first.",
@@ -144,8 +173,13 @@ export const en = {
       temperature: "Temperature",
       timeoutMs: "Timeout ms",
       promptTemplate: "Prompt template",
+      promptTemplateType: "Prompt template type",
+      promptTemplateTypes: {
+        lookup: "Word lookup",
+        translation: "Translation",
+      },
       promptTemplateHelp:
-        "Available variables: {{task}}, {{selection}}, {{context}}",
+        "Available variables: {{selection}}, {{context}}",
       behavior: "Behavior",
       autoCloseLookupPanelOnCopy:
         "Automatically close lookup popup after copying",
@@ -171,6 +205,7 @@ export const en = {
       footprintUnstarred: "Footprint unstarred.",
       footprintArchived: "Footprint archived.",
       highlightDeleted: "Highlight deleted.",
+      highlightNoteSaved: "Highlight note saved.",
       vocabularyDeleted: "Vocabulary item deleted.",
       translationDeleted: "Translation deleted.",
       copied: "Copied.",
@@ -178,10 +213,13 @@ export const en = {
       markdownExported: "Markdown exported.",
       promptRestored: "Default prompt restored.",
       pronunciationStarted: "Pronunciation started.",
+      llmConnectionSucceeded: "LLM connection test succeeded.",
     },
     errors: {
       promptTemplateMissingVariables:
         "Prompt template is missing required variables: {{variables}}",
+      llmConfigRequired: "Required configuration: {{fields}}.",
+      llmConnectionFailed: "LLM connection test failed: {{reason}}",
     },
     statusDescriptions: {
       active: "This highlight was restored on the source page.",
@@ -197,12 +235,24 @@ export const en = {
       untitled: "Untitled",
     },
     about: {
-      plan: {
-        title: "Plan",
-        body: "The next planned capabilities are a vocabulary review schedule based on the forgetting curve, helping saved words move from quick lookup records into long-term memory, and data sync across devices.",
-      },
       releases: {
         title: "Releases",
+        v1_2: {
+          version: "1.2.0",
+          summary:
+            "Adds vocabulary review and highlight notes, along with many detail improvements.",
+          feature1:
+            "Adds vocabulary review based on the forgetting curve.",
+          feature2: "Adds notes to highlights.",
+          feature3: "Adds a learning activity heatmap to Footprints.",
+          feature4:
+            "Adds distinct Obsidian and Notion data export formats.",
+          feature5:
+            "Allows text within a highlight to be looked up at the same time.",
+          feature6:
+            "Fixes the positioning of the highlight and word-selection toolbar.",
+          feature7: "Includes other style and functionality improvements.",
+        },
         v1_1: {
           version: "1.1.0",
           summary: "Refines the interface and adds footprints for visited pages.",

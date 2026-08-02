@@ -1,18 +1,38 @@
 import { createLookupCacheKey } from "../shared/cache-key";
 import type { RuntimeMessage, PronunciationResult } from "../shared/messages";
+import {
+  LLM_STREAM_PORT,
+  OpenAiSseParser,
+  type LlmStreamClientMessage,
+  type LlmStreamEvent,
+} from "../shared/llm-stream";
 import { stripOuterCodeFence } from "../shared/markdown";
 import { getHostname, normalizeUrlKey } from "../shared/url";
 import {
   deleteFromStore,
+  deleteAudioCache,
+  countDueVocabulary,
   getAllFromStore,
   getAllFootprints,
   getFootprint,
+  getFromStore,
+  getAudioCache,
   getHighlightsForUrl,
+  getNextVocabularyReview,
+  getReviewQueue,
   getSettings,
+  getOptionsDataCounts,
   getVocabularyByCacheKey,
+  getVocabularyForUrl as getVocabularyRecordsForUrl,
   importSnapshot,
   putInStore,
   saveSettings,
+  saveAudioCache,
+  queryFootprints,
+  queryHighlights,
+  queryVocabulary,
+  submitVocabularyReview,
+  updateHighlightStatuses,
 } from "../shared/repositories/db";
 import type {
   AppSettings,
@@ -24,7 +44,16 @@ import type {
   SelectionLookupResult,
   VocabularyRecord,
 } from "../shared/types";
-import { getEffectiveLlmConfig } from "../shared/types";
+import {
+  getEffectiveLlmConfig,
+  getPromptTemplateForSelectionKind,
+  SCHEMA_VERSION,
+} from "../shared/types";
+import {
+  getNextReviewReminderAt,
+  normalizeVocabularyReview,
+} from "../shared/review";
+import { detectSpeechLanguage, normalizeWord } from "../shared/word";
 
 const TARGET_LANGUAGE_NAMES: Record<AppSettings["ui"]["language"], string> = {
   "zh-CN": "Simplified Chinese",
@@ -33,7 +62,11 @@ const TARGET_LANGUAGE_NAMES: Record<AppSettings["ui"]["language"], string> = {
   es: "Spanish",
 };
 
-chrome.runtime.onInstalled.addListener(async () => {
+const REVIEW_ALARM = "remarker-review-reminder";
+
+void ensureReviewAlarm();
+
+chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   const cache = await chrome.storage.local.get([
     "globalEnabled",
     "disabledSites",
@@ -42,9 +75,88 @@ chrome.runtime.onInstalled.addListener(async () => {
   await chrome.storage.local.set({
     globalEnabled: cache.globalEnabled ?? true,
     disabledSites: cache.disabledSites ?? [],
-    schemaVersion: cache.schemaVersion ?? 1,
+    schemaVersion: Math.max(cache.schemaVersion ?? 0, SCHEMA_VERSION),
   });
+  await ensureReviewAlarm();
+  await refreshReviewBadge();
+  if (reason === "install") {
+    await chrome.tabs.create({
+      url: chrome.runtime.getURL("options.html#settings?onboarding=1"),
+    });
+  }
 });
+
+chrome.runtime.onStartup.addListener(() => {
+  void ensureReviewAlarm();
+  void refreshReviewBadge();
+});
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === REVIEW_ALARM) void handleReviewAlarm();
+});
+
+async function ensureReviewAlarm(): Promise<void> {
+  const existing = await chrome.alarms.get(REVIEW_ALARM);
+  if (existing && existing.periodInMinutes === undefined) return;
+  if (existing) await chrome.alarms.clear(REVIEW_ALARM);
+  await scheduleNextReviewAlarm();
+}
+
+async function handleReviewAlarm(): Promise<void> {
+  try {
+    await refreshReviewBadge();
+  } finally {
+    await scheduleNextReviewAlarm();
+  }
+}
+
+async function scheduleNextReviewAlarm(): Promise<void> {
+  const when = new Date(
+    getNextReviewReminderAt(new Date().toISOString()),
+  ).getTime();
+  await chrome.alarms.create(REVIEW_ALARM, { when });
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== LLM_STREAM_PORT) return;
+  let activeRequest: { requestId: string; controller: AbortController } | undefined;
+  port.onMessage.addListener((message: LlmStreamClientMessage) => {
+    if (message.type === "cancel") {
+      if (activeRequest?.requestId === message.requestId) activeRequest.controller.abort();
+      return;
+    }
+    activeRequest?.controller.abort();
+    const controller = new AbortController();
+    activeRequest = { requestId: message.requestId, controller };
+    const requestId = message.requestId;
+    postPortEvent(port, { type: "started", requestId });
+    explainSelection(message.payload, {
+      signal: controller.signal,
+      onChunk: (content) => postPortEvent(port, { type: "chunk", requestId, content }),
+    })
+      .then((result) => postPortEvent(port, { type: "completed", requestId, result }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        postPortEvent(port, {
+          type: "error",
+          requestId,
+          error: error instanceof Error ? error.message : "Unknown streaming error.",
+        });
+      })
+      .finally(() => {
+        if (activeRequest?.requestId === requestId) activeRequest = undefined;
+      });
+  });
+  port.onDisconnect.addListener(() => activeRequest?.controller.abort());
+});
+
+function postPortEvent(port: chrome.runtime.Port, event: LlmStreamEvent): void {
+  try {
+    port.postMessage(event);
+  } catch {
+    // A disconnected content script already cancels the associated request.
+  }
+}
 
 chrome.runtime.onMessage.addListener(
   (message: RuntimeMessage, _sender, sendResponse) => {
@@ -86,15 +198,23 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
     case "UPDATE_HIGHLIGHT_COLOR":
       return updateHighlightColor(message.id, message.color);
 
+    case "UPDATE_HIGHLIGHT_NOTE":
+      return updateHighlightNote(message.id, message.note);
+
+    case "UPDATE_HIGHLIGHT_STATUSES":
+      return updateHighlightStatuses(message.updates);
+
     case "DELETE_HIGHLIGHT":
       await deleteFromStore("highlights", message.id);
       return { id: message.id };
 
     case "SAVE_VOCABULARY":
+      message.record = normalizeVocabularyReview(message.record);
       await Promise.all([
         putInStore("vocabulary", message.record),
         ensureFootprintRecord(message.record.sourceUrl, message.record.sourceTitle),
       ]);
+      await refreshReviewBadge();
       return message.record;
 
     case "SET_FOOTPRINT_STAR":
@@ -104,20 +224,62 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
       return archiveFootprint(message.urlKey);
 
     case "DELETE_VOCABULARY":
-      return deleteVocabulary(message.id);
+      await deleteVocabulary(message.id);
+      await refreshReviewBadge();
+      return { id: message.id };
+
+    case "GET_REVIEW_QUEUE":
+      return getReviewQueue(message.now, message.limit);
+
+    case "GET_REVIEW_STATUS": {
+      const dueCount = await countDueVocabulary(message.now);
+      const next = await getNextVocabularyReview();
+      return { dueCount, nextReviewAt: next?.nextReviewAt };
+    }
+
+    case "QUERY_HIGHLIGHTS":
+      return queryHighlights(message.query);
+
+    case "QUERY_VOCABULARY":
+      return queryVocabulary(message.query);
+
+    case "QUERY_FOOTPRINTS":
+      return queryFootprints(message.query);
+
+    case "SUBMIT_VOCABULARY_REVIEW": {
+      const updated = await submitVocabularyReview(
+        message.id,
+        message.rating,
+        message.reviewedAt,
+      );
+      await refreshReviewBadge();
+      return updated;
+    }
 
     case "EXPLAIN_SELECTION":
       return explainSelection(message);
 
     case "GET_PRONUNCIATION":
-      return getPronunciation(message.word);
+      return getPronunciation(message.word, message.language);
 
     case "GET_SETTINGS":
       return getSettings();
 
+    case "GET_OPTIONS_OVERVIEW": {
+      const [settings, counts] = await Promise.all([
+        getSettings(),
+        getOptionsDataCounts(),
+      ]);
+      return { settings, counts };
+    }
+
     case "SAVE_SETTINGS":
       await saveSettings(message.settings);
       return message.settings;
+
+    case "TEST_LLM_CONNECTION":
+      await testLlmConnection(message.settings);
+      return { connected: true };
 
     case "OPEN_SETTINGS_PAGE":
       await chrome.tabs.create({
@@ -151,8 +313,7 @@ async function updateHighlightStatus(
   id: string,
   status: HighlightStatus,
 ): Promise<HighlightRecord | undefined> {
-  const highlights = await getAllFromStore<HighlightRecord>("highlights");
-  const record = highlights.find((item) => item.id === id);
+  const record = await getFromStore<HighlightRecord>("highlights", id);
   if (!record) return undefined;
 
   const next = { ...record, status, updatedAt: new Date().toISOString() };
@@ -164,11 +325,25 @@ async function updateHighlightColor(
   id: string,
   color: HighlightRecord["color"],
 ): Promise<HighlightRecord | undefined> {
-  const highlights = await getAllFromStore<HighlightRecord>("highlights");
-  const record = highlights.find((item) => item.id === id);
+  const record = await getFromStore<HighlightRecord>("highlights", id);
   if (!record) return undefined;
 
   const next = { ...record, color, updatedAt: new Date().toISOString() };
+  await putInStore("highlights", next);
+  return next;
+}
+
+async function updateHighlightNote(
+  id: string,
+  note: string,
+): Promise<HighlightRecord | undefined> {
+  const record = await getFromStore<HighlightRecord>("highlights", id);
+  if (!record) return undefined;
+  const next = {
+    ...record,
+    note: note.trim() || undefined,
+    updatedAt: new Date().toISOString(),
+  };
   await putInStore("highlights", next);
   return next;
 }
@@ -207,11 +382,16 @@ async function archiveFootprint(
 
 async function explainSelection(
   input: Extract<RuntimeMessage, { type: "EXPLAIN_SELECTION" }>,
+  stream?: { signal: AbortSignal; onChunk: (content: string) => void },
 ): Promise<SelectionLookupResult> {
   const settings = await getSettings();
   const llm = getEffectiveLlmConfig(settings.llm);
   const modelIdentity = `${llm.provider}:${llm.model}`;
   const targetLanguage = getTargetLanguageName(settings);
+  const promptTemplate = getPromptTemplateForSelectionKind(
+    settings.llm,
+    input.selectionKind,
+  );
   const urlKey = safeNormalizeUrlKey(input.sourceUrl);
   const { cacheKey, contextHash } = await createLookupCacheKey({
     selectedText: input.selectedText,
@@ -219,7 +399,7 @@ async function explainSelection(
     sourceKey: urlKey,
     model: modelIdentity,
     selectionKind: input.selectionKind,
-    promptTemplate: settings.llm.promptTemplate,
+    promptTemplate,
     targetLanguage,
   });
 
@@ -242,9 +422,7 @@ async function explainSelection(
     return vocabularyToLookupResult(currentRecord);
   }
 
-  if (!isLlmConfigured(settings)) {
-    throw new Error("LLM configuration is incomplete.");
-  }
+  validateLlmConfiguration(settings, input.selectionKind);
 
   const result = await callOpenAiCompatibleApi({
     provider: llm.provider,
@@ -253,15 +431,17 @@ async function explainSelection(
     model: llm.model,
     temperature: settings.llm.temperature,
     timeoutMs: settings.llm.timeoutMs,
-    promptTemplate: settings.llm.promptTemplate,
+    promptTemplate,
     targetLanguage,
-    selectionKind: input.selectionKind,
     selectedText: input.selectedText,
     context: input.context,
+    signal: stream?.signal,
+    onChunk: stream?.onChunk,
   });
 
   const now = new Date().toISOString();
-  const record: VocabularyRecord = {
+  const record: VocabularyRecord = normalizeVocabularyReview({
+    ...cached,
     id: cached?.id ?? crypto.randomUUID(),
     selectionKind: input.selectionKind,
     word: input.selectedText,
@@ -277,22 +457,40 @@ async function explainSelection(
     model: modelIdentity,
     createdAt: cached?.createdAt ?? now,
     updatedAt: now,
-  };
+  });
 
   await Promise.all([
     putInStore("vocabulary", record),
     ensureFootprintRecord(record.sourceUrl, record.sourceTitle),
   ]);
+  if (record.selectionKind === "word") void enrichVocabularyPronunciation(record);
+  await refreshReviewBadge();
   return vocabularyToLookupResult(record);
+}
+
+async function enrichVocabularyPronunciation(record: VocabularyRecord): Promise<void> {
+  try {
+    const result = await getPronunciation(record.word);
+    if (!result.phonetic && !result.audioUrl && !result.audioDataUrl) return;
+    const current = await getFromStore<VocabularyRecord>("vocabulary", record.id);
+    if (!current) return;
+    await putInStore("vocabulary", {
+      ...current,
+      phonetic: result.phonetic ?? current.phonetic,
+      audioProvider: result.provider,
+      audioUrl: result.audioUrl ?? current.audioUrl,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch {
+    // Pronunciation enrichment must never fail a successful word lookup.
+  }
 }
 
 async function getVocabularyForUrl(
   urlKey: string,
 ): Promise<VocabularyRecord[]> {
-  const vocabulary = await getAllFromStore<VocabularyRecord>("vocabulary");
-  return vocabulary.filter(
-    (record) => record.urlKey === urlKey && record.selectionKind !== "text",
-  );
+  const vocabulary = await getVocabularyRecordsForUrl(urlKey);
+  return vocabulary.filter((record) => record.selectionKind !== "text");
 }
 
 async function getFootprintForSourceUrl(
@@ -438,9 +636,68 @@ function getTargetLanguageName(settings: AppSettings): string {
   );
 }
 
-function isLlmConfigured(settings: AppSettings): boolean {
+function validateRequiredLlmConfiguration(settings: AppSettings) {
   const llm = getEffectiveLlmConfig(settings.llm);
-  return Boolean(llm.baseUrl.trim() && llm.apiKey.trim() && llm.model.trim());
+  const missing: string[] = [];
+  if (!llm.baseUrl.trim()) missing.push("base URL");
+  if (!llm.apiKey.trim()) missing.push("API key");
+  if (!llm.model.trim()) missing.push("model");
+  if (missing.length) {
+    throw new Error(`${llm.provider} LLM configuration is missing: ${missing.join(", ")}.`);
+  }
+  return llm;
+}
+
+function validateLlmConfiguration(
+  settings: AppSettings,
+  selectionKind: "word" | "text",
+): void {
+  validateRequiredLlmConfiguration(settings);
+  const promptTemplate = getPromptTemplateForSelectionKind(
+    settings.llm,
+    selectionKind,
+  );
+  const missingPromptVariables = ["{{selection}}", "{{context}}"]
+    .filter((variable) => !promptTemplate.includes(variable));
+  if (missingPromptVariables.length) {
+    throw new Error(
+      `LLM prompt template is missing required variables: ${missingPromptVariables.join(", ")}.`,
+    );
+  }
+}
+
+async function testLlmConnection(settings: AppSettings): Promise<void> {
+  const llm = validateRequiredLlmConfiguration(settings);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), settings.llm.timeoutMs);
+  const baseUrl = llm.baseUrl.replace(/\/$/, "");
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${llm.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: llm.model,
+        messages: [{ role: "user", content: "Reply with OK." }],
+        ...getReasoningDisabledParams(llm.provider, llm.model),
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) throw await createLlmRequestError(response);
+    await response.body?.cancel();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`LLM connection test timed out after ${settings.llm.timeoutMs} ms.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function safeNormalizeUrlKey(sourceUrl: string): string {
@@ -500,15 +757,17 @@ async function callOpenAiCompatibleApi(input: {
   timeoutMs: number;
   promptTemplate: string;
   targetLanguage: string;
-  selectionKind: "word" | "text";
   selectedText: string;
   context: string;
+  signal?: AbortSignal;
+  onChunk?: (content: string) => void;
 }): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), input.timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  input.signal?.addEventListener("abort", abortFromCaller, { once: true });
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const prompt = renderPromptTemplate(input.promptTemplate, {
-    task: buildTask(input.selectionKind, input.targetLanguage),
     selection: input.selectedText,
     context: input.context,
   });
@@ -518,7 +777,7 @@ async function callOpenAiCompatibleApi(input: {
     messages: [
       {
         role: "system",
-        content: "Follow the user's prompt template exactly. Return Markdown.",
+        content: `Follow the user's prompt template exactly. Respond in ${input.targetLanguage}. Return Markdown.`,
       },
       {
         role: "user",
@@ -526,6 +785,7 @@ async function callOpenAiCompatibleApi(input: {
       },
     ],
     ...getReasoningDisabledParams(input.provider, input.model),
+    stream: true,
   };
 
   try {
@@ -539,20 +799,80 @@ async function callOpenAiCompatibleApi(input: {
       body: JSON.stringify(requestBody),
     });
 
-    if (!response.ok) {
-      throw new Error(`LLM request failed: ${response.status}`);
+    if (!response.ok) throw await createLlmRequestError(response);
+
+    const contentType = response.headers.get("content-type") ?? "";
+    let content = "";
+    if (!contentType.includes("text/event-stream")) {
+      const json = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      content = json.choices?.[0]?.message?.content ?? "";
+      if (content) input.onChunk?.(content);
+    } else {
+      if (!response.body) throw new Error("LLM streaming response had no body.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const parser = new OpenAiSseParser();
+      while (true) {
+        const { value, done } = await reader.read();
+        let parsed: { content: string[]; done: boolean };
+        if (done) {
+          const flushed = decoder.decode();
+          const pushed = flushed
+            ? parser.push(flushed)
+            : { content: [], done: false };
+          const finished = parser.finish();
+          parsed = {
+            content: [...pushed.content, ...finished.content],
+            done: pushed.done || finished.done,
+          };
+        } else {
+          parsed = parser.push(decoder.decode(value, { stream: true }));
+        }
+        for (const chunk of parsed.content) {
+          content += chunk;
+          input.onChunk?.(chunk);
+        }
+        if (done || parsed.done) break;
+      }
     }
 
-    const json = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-
-    const content = json.choices?.[0]?.message?.content?.trim();
+    content = content.trim();
     if (!content) throw new Error("LLM response did not include content.");
     return stripOuterCodeFence(content);
   } finally {
     clearTimeout(timeoutId);
+    input.signal?.removeEventListener("abort", abortFromCaller);
   }
+}
+
+async function createLlmRequestError(response: Response): Promise<Error> {
+  const responseText = await response.text();
+  let detail = responseText;
+  try {
+    const parsed = JSON.parse(responseText) as {
+      error?: { message?: string } | string;
+      message?: string;
+    };
+    detail =
+      (typeof parsed.error === "object" ? parsed.error?.message : parsed.error) ??
+      parsed.message ??
+      responseText;
+  } catch {
+    // Some OpenAI-compatible providers return plain text or HTML errors.
+  }
+  const normalizedDetail = detail.replace(/\s+/g, " ").trim().slice(0, 500);
+  const status = `${response.status}${response.statusText ? ` ${response.statusText}` : ""}`;
+  return new Error(
+    `LLM request failed (${status})${normalizedDetail ? `: ${normalizedDetail}` : "."}`,
+  );
+}
+
+async function refreshReviewBadge(): Promise<void> {
+  const dueCount = await countDueVocabulary(new Date().toISOString()).catch(() => 0);
+  await chrome.action.setBadgeBackgroundColor({ color: "#dc2626" });
+  await chrome.action.setBadgeText({ text: dueCount ? (dueCount > 99 ? "99+" : String(dueCount)) : "" });
 }
 
 type OpenAiCompatibleChatRequestBody = {
@@ -630,41 +950,47 @@ function canDisableDeepSeekThinking(model: string): boolean {
 
 function renderPromptTemplate(
   template: string,
-  values: { task: string; selection: string; context: string },
+  values: { selection: string; context: string },
 ): string {
   return template
-    .replaceAll("{{task}}", values.task)
     .replaceAll("{{selection}}", values.selection)
     .replaceAll("{{context}}", values.context);
 }
 
-function buildTask(
-  selectionKind: "word" | "text",
-  targetLanguage: string,
-): string {
-  const languageInstruction = `Infer the source language for translation or word lookup from the context; default to English when uncertain. The target language is ${targetLanguage}.`;
-  const taskInstruction =
-    selectionKind === "word"
-      ? "Explain the selected word in context."
-      : "Translate the selected text according to the provided context.";
-  return `${languageInstruction} ${taskInstruction}`;
-}
-
-async function getPronunciation(word: string): Promise<PronunciationResult> {
+async function getPronunciation(
+  word: string,
+  requestedLanguage?: string,
+): Promise<PronunciationResult> {
+  const requestedSpeechLanguage = requestedLanguage === "en"
+    ? "en-US"
+    : (requestedLanguage || "en-US");
+  const containsCjkScript = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u
+    .test(word);
+  if (containsCjkScript) {
+    return {
+      provider: "speech-synthesis",
+      language: detectSpeechLanguage(word, requestedSpeechLanguage),
+    };
+  }
+  const dictionaryLanguage = "en-US";
   const settings = await getSettings();
   const apiKey = settings.pronunciation.merriamWebsterApiKey.trim();
 
   if (apiKey) {
-    const result = await getMerriamWebsterAudio(word, apiKey).catch(
+    const result = await getCachedPronunciation(word, dictionaryLanguage, "merriam-webster") ??
+      await getMerriamWebsterAudio(word, apiKey).catch(
       () => undefined,
     );
-    if (result) return result;
+    if (result) return cachePronunciation(word, result);
   }
 
-  const freeDictionary = await getFreeDictionaryAudio(word).catch(
-    () => undefined,
-  );
-  return freeDictionary ?? { provider: "speech-synthesis" };
+  const freeDictionary =
+    await getCachedPronunciation(word, dictionaryLanguage, "free-dictionary") ??
+    await getFreeDictionaryAudio(word).catch(() => undefined);
+  return freeDictionary ? cachePronunciation(word, freeDictionary) : {
+    provider: "speech-synthesis",
+    language: requestedSpeechLanguage,
+  };
 }
 
 async function getMerriamWebsterAudio(
@@ -677,17 +1003,20 @@ async function getMerriamWebsterAudio(
   if (!response.ok) return undefined;
 
   const data = (await response.json()) as Array<{
-    hwi?: { prs?: Array<{ sound?: { audio?: string } }> };
+    hwi?: { prs?: Array<{ mw?: string; sound?: { audio?: string } }> };
   }>;
-  const audio = data.find((entry) =>
+  const pronunciation = data.find((entry) =>
     entry.hwi?.prs?.some((pronunciation) => pronunciation.sound?.audio),
-  )?.hwi?.prs?.[0]?.sound?.audio;
+  )?.hwi?.prs?.find((item) => item.sound?.audio);
+  const audio = pronunciation?.sound?.audio;
   if (!audio) return undefined;
 
   const subdirectory = getMerriamWebsterAudioSubdirectory(audio);
   return {
     provider: "merriam-webster",
     audioUrl: `https://media.merriam-webster.com/audio/prons/en/us/mp3/${subdirectory}/${audio}.mp3`,
+    language: "en-US",
+    phonetic: pronunciation?.mw,
   };
 }
 
@@ -707,7 +1036,8 @@ async function getFreeDictionaryAudio(
   if (!response.ok) return undefined;
 
   const data = (await response.json()) as Array<{
-    phonetics?: Array<{ audio?: string }>;
+    phonetic?: string;
+    phonetics?: Array<{ text?: string; audio?: string }>;
   }>;
   const audioUrl = data
     .flatMap((entry) => entry.phonetics ?? [])
@@ -715,5 +1045,87 @@ async function getFreeDictionaryAudio(
     .find((audio): audio is string => Boolean(audio));
 
   if (!audioUrl) return undefined;
-  return { provider: "free-dictionary", audioUrl };
+  const phonetic = data.flatMap((entry) => entry.phonetics ?? [])
+    .find((item) => item.text)?.text ?? data.find((entry) => entry.phonetic)?.phonetic;
+  return { provider: "free-dictionary", audioUrl, phonetic, language: "en-US" };
+}
+
+const MAX_AUDIO_CACHE_BYTES = 512 * 1024;
+
+function getAudioCacheKey(
+  word: string,
+  language: string,
+  provider: "merriam-webster" | "free-dictionary",
+): string {
+  return `${language}:${normalizeWord(word)}:${provider}`;
+}
+
+async function getCachedPronunciation(
+  word: string,
+  language: string,
+  provider: "merriam-webster" | "free-dictionary",
+): Promise<PronunciationResult | undefined> {
+  const key = getAudioCacheKey(word, language, provider);
+  const cached = await getAudioCache(key);
+  if (!cached) return undefined;
+  try {
+    const audioDataUrl = cached.audioBlob
+      ? await blobToDataUrl(cached.audioBlob, cached.mimeType)
+      : undefined;
+    await saveAudioCache({ ...cached, lastAccessedAt: new Date().toISOString() });
+    return {
+      provider,
+      language: cached.language,
+      audioDataUrl,
+      audioUrl: cached.audioUrl,
+      phonetic: cached.phonetic,
+    };
+  } catch {
+    await deleteAudioCache(key);
+    return undefined;
+  }
+}
+
+async function cachePronunciation(
+  word: string,
+  result: PronunciationResult,
+): Promise<PronunciationResult> {
+  if (result.provider === "speech-synthesis" || !result.audioUrl) return result;
+  const now = new Date().toISOString();
+  let audioBlob: Blob | undefined;
+  let audioDataUrl: string | undefined;
+  let mimeType: string | undefined;
+  try {
+    const response = await fetch(result.audioUrl);
+    if (response.ok) {
+      const blob = await response.blob();
+      if (blob.size <= MAX_AUDIO_CACHE_BYTES) {
+        audioBlob = blob;
+        mimeType = blob.type || "audio/mpeg";
+        audioDataUrl = await blobToDataUrl(blob, mimeType);
+      }
+    }
+  } catch {
+    // The original remote URL remains a valid pronunciation fallback.
+  }
+  await saveAudioCache({
+    key: getAudioCacheKey(word, result.language, result.provider),
+    language: result.language,
+    normalizedWord: normalizeWord(word),
+    provider: result.provider,
+    mimeType,
+    audioBlob,
+    audioUrl: result.audioUrl,
+    phonetic: result.phonetic,
+    createdAt: now,
+    lastAccessedAt: now,
+  });
+  return { ...result, audioDataUrl };
+}
+
+async function blobToDataUrl(blob: Blob, mimeType?: string): Promise<string> {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `data:${mimeType || blob.type || "application/octet-stream"};base64,${btoa(binary)}`;
 }

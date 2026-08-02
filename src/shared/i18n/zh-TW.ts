@@ -23,6 +23,8 @@ export const zhTW: Messages = {
     addFootprint: "加入足跡",
     addedFootprint: "已加入足跡",
     managePage: "開啟管理頁面",
+    reviewDue: "有 {{count}} 個詞待複習",
+    openReview: "進入複習介面",
   },
   content: {
     copy: "複製",
@@ -61,6 +63,21 @@ export const zhTW: Messages = {
       collapse: "收合",
       expand: "展開",
     },
+    activity: {
+      title: "最近 6 個月學習活動",
+      less: "少",
+      more: "多",
+      reviewTitle: "今日複習",
+      reviewProgress: "已完成 {{completed}} 個 · 共需複習 {{total}} 個",
+      startReview: "開始複習",
+      reviewCompleted: "🎉 已完成 ✨",
+      reviewEmpty:
+        "請在閱讀外文頁面時使用 ReMarker 查詞，查詞結果將自動儲存為生詞並提示複習。",
+      daySummary: "{{date}}：共 {{total}} 項",
+      highlightSummary: "{{count}} 條標記",
+      vocabularySummary: "{{count}} 個生詞",
+      translationSummary: "{{count}} 條翻譯",
+    },
     columns: {
       pageTitle: "頁面標題",
       site: "站點",
@@ -76,6 +93,8 @@ export const zhTW: Messages = {
       original: "原文",
       context: "上下文",
       audio: "發音",
+      note: "筆記",
+      hasNoteSuffix: "， 有筆記",
     },
     filters: {
       allColors: "全部顏色",
@@ -87,6 +106,7 @@ export const zhTW: Messages = {
       highlights: "暫無標記資料。",
       vocabulary: "暫無生字資料。",
       translations: "暫無翻譯資料。",
+      note: "暫無筆記",
     },
     actions: {
       starFootprint: "星標足跡",
@@ -94,6 +114,11 @@ export const zhTW: Messages = {
       archiveFootprint: "歸檔足跡",
       copyHighlightedText: "複製標記文字",
       deleteHighlight: "刪除標記",
+      expandHighlight: "展開標記",
+      collapseHighlight: "收合標記",
+      addHighlightNote: "新增筆記",
+      editHighlightNote: "編輯筆記",
+      saveHighlightNote: "儲存筆記",
       expandTranslation: "展開解釋",
       collapseTranslation: "收合解釋",
       speakWord: "播放 {{word}} 發音",
@@ -106,6 +131,8 @@ export const zhTW: Messages = {
       importJson: "匯入 JSON",
       saveSettings: "儲存設定",
       restoreDefault: "恢復預設",
+      test: "測試",
+      testing: "測試中…",
     },
     confirmations: {
       archiveFootprint: "歸檔這條足跡？歸檔後將不再顯示於目前列表。",
@@ -117,6 +144,7 @@ export const zhTW: Messages = {
       llm: "大型語言模型",
       llmCostNotice:
         "注意：呼叫大型語言模型翻譯或查詞可能產生費用，由所選模型廠商決定和收取，請妥善設定並保存 Key 資訊。",
+      llmOnboardingNotice: "查詞與翻譯功能需要 LLM 支援，請先設定",
       provider: "模型廠商",
       providerHelp:
         "翻譯本身的成本消耗較低，建議以接口回應速度作為第一考量因素。",
@@ -141,7 +169,12 @@ export const zhTW: Messages = {
       temperature: "Temperature",
       timeoutMs: "逾時時間 ms",
       promptTemplate: "提示詞模板",
-      promptTemplateHelp: "可用變數：{{task}}、{{selection}}、{{context}}",
+      promptTemplateType: "提示詞類型",
+      promptTemplateTypes: {
+        lookup: "查詞",
+        translation: "翻譯",
+      },
+      promptTemplateHelp: "可用變數：{{selection}}、{{context}}",
       behavior: "行為",
       autoCloseLookupPanelOnCopy: "查詞彈窗複製後自動關閉",
       language: "語言",
@@ -166,6 +199,7 @@ export const zhTW: Messages = {
       footprintUnstarred: "已取消星標。",
       footprintArchived: "足跡已歸檔。",
       highlightDeleted: "標記已刪除。",
+      highlightNoteSaved: "標記筆記已儲存。",
       vocabularyDeleted: "生字已刪除。",
       translationDeleted: "翻譯已刪除。",
       copied: "已複製。",
@@ -173,9 +207,12 @@ export const zhTW: Messages = {
       markdownExported: "Markdown 已匯出。",
       promptRestored: "已恢復預設提示詞。",
       pronunciationStarted: "已開始播放發音。",
+      llmConnectionSucceeded: "LLM 連線測試成功。",
     },
     errors: {
       promptTemplateMissingVariables: "提示詞模板缺少必要變數：{{variables}}",
+      llmConfigRequired: "必須填寫：{{fields}}。",
+      llmConnectionFailed: "LLM 連線測試失敗：{{reason}}",
     },
     statusDescriptions: {
       active: "這條標記已在來源頁面恢復。",
@@ -190,12 +227,19 @@ export const zhTW: Messages = {
       untitled: "未命名",
     },
     about: {
-      plan: {
-        title: "Plan",
-        body: "後續計畫增加基於遺忘曲線的生字複習計畫，讓臨時查詞沉澱為可持續複習的長期記憶，並支援資料在不同裝置之間同步。",
-      },
       releases: {
         title: "Releases",
+        v1_2: {
+          version: "1.2.0",
+          summary: "新增生字複習、標記筆記功能及大量細節優化。",
+          feature1: "新增基於遺忘曲線的生字複習功能。",
+          feature2: "為標記新增筆記功能。",
+          feature3: "足跡頁面新增「學習活動圖」展示。",
+          feature4: "資料匯出增加 Obsidian 和 Notion 格式區分。",
+          feature5: "解決標記部分的文字無法同時查詞的問題。",
+          feature6: "修正頁面標記／選詞工具列的定位問題。",
+          feature7: "其他樣式和功能優化。",
+        },
         v1_1: {
           version: "1.1.0",
           summary: "優化介面樣式，並增加造訪頁面的足跡功能。",

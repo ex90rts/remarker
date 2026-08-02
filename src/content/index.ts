@@ -2,6 +2,12 @@ import {
   createSemanticContext,
   DEFAULT_CONTEXT_CHAR_LIMIT,
 } from "../shared/context";
+import { getSelectionKind, detectSpeechLanguage } from "../shared/word";
+import {
+  LLM_STREAM_PORT,
+  type LlmStreamClientMessage,
+  type LlmStreamEvent,
+} from "../shared/llm-stream";
 
 export {};
 
@@ -26,6 +32,7 @@ interface HighlightRecord {
   color: HighlightColor;
   anchor: TextAnchor;
   status: HighlightStatus;
+  note?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +86,7 @@ interface VocabularyRecord {
   contextSentence: string;
   anchor?: TextAnchor;
   translation?: string;
+  phonetic?: string;
   createdAt: string;
 }
 
@@ -105,6 +113,9 @@ interface ContentMessages {
   copied: string;
   savedHighlights: string;
   configureLlm: string;
+  note: string;
+  save: string;
+  cancel: string;
 }
 
 const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
@@ -131,6 +142,9 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     copied: "已复制",
     savedHighlights: "已保存 {{count}} 条划线。",
     configureLlm: "配置大模型",
+    note: "笔记",
+    save: "保存",
+    cancel: "取消",
   },
   "zh-TW": {
     copy: "複製",
@@ -155,6 +169,9 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     copied: "已複製",
     savedHighlights: "已儲存 {{count}} 條標記。",
     configureLlm: "設定大型語言模型",
+    note: "筆記",
+    save: "儲存",
+    cancel: "取消",
   },
   en: {
     copy: "Copy",
@@ -179,6 +196,9 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     copied: "Copied",
     savedHighlights: "Saved {{count}} highlight{{plural}}.",
     configureLlm: "Configure LLM",
+    note: "Note",
+    save: "Save",
+    cancel: "Cancel",
   },
   es: {
     copy: "Copiar",
@@ -203,16 +223,31 @@ const CONTENT_MESSAGES: Record<SupportedLanguage, ContentMessages> = {
     copied: "Copiado",
     savedHighlights: "{{count}} resaltado{{plural}} guardado{{plural}}.",
     configureLlm: "Configurar LLM",
+    note: "Nota",
+    save: "Guardar",
+    cancel: "Cancelar",
   },
 };
 
 const MISSING_LLM_CONFIG_ERROR = "LLM configuration is incomplete.";
 
-const WORD_PATTERN = /^[A-Za-z]+(?:[-'][A-Za-z]+)*$/;
 const HIGHLIGHT_CLASS = "remarker-highlight";
 const LOOKUP_CLASS = "remarker-lookup";
 const LOOKUP_UNDERLINE_COLOR = "#f97316";
 const CONTEXT_CHAR_LIMIT = DEFAULT_CONTEXT_CHAR_LIMIT;
+const EDITOR_ISOLATED_EVENT_TYPES = [
+  "keydown",
+  "keyup",
+  "keypress",
+  "beforeinput",
+  "input",
+  "compositionstart",
+  "compositionupdate",
+  "compositionend",
+  "paste",
+  "copy",
+  "cut",
+] as const;
 const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
   yellow: "#ffe66d",
   green: "#b7f7c2",
@@ -224,17 +259,29 @@ const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
 let shadowRoot: ShadowRoot;
 let toolbar: HTMLDivElement;
 let panel: HTMLDivElement;
+let noteTooltip: HTMLDivElement;
 let overlayHost: HTMLDivElement | undefined;
 let currentSelection: SelectionState | undefined;
 let currentUrlKey = normalizeUrlKey(location.href);
 let panelPinned = false;
 let toolbarPinned = false;
+let toolbarAnchor: (() => DOMRect | undefined) | undefined;
+let toolbarPlacement: "above" | "below" = "above";
+let toolbarPositionFrame: number | undefined;
 let suppressSelectionChangeUntil = 0;
 let transientTimer: number | undefined;
 let lookupPanelTimer: number | undefined;
 let t: ContentMessages = getContentMessages(detectBrowserLanguage());
 let autoCloseLookupPanelOnCopy = false;
 let extensionActive = false;
+let activeStream:
+  | {
+      requestId: string;
+      port: chrome.runtime.Port;
+      animationFrame?: number;
+      reject?: (reason: unknown) => void;
+    }
+  | undefined;
 const selectionChangeListener = debounce(handleSelectionChange, 120);
 
 init().catch((error) => {
@@ -308,11 +355,12 @@ async function activateExtension(): Promise<void> {
 
   await loadMessages();
   createOverlay();
-  await restoreHighlights();
-  await restoreVocabularyMarkers();
   document.addEventListener("selectionchange", selectionChangeListener);
   document.addEventListener("mousedown", handleDocumentMouseDown, true);
+  document.addEventListener("scroll", scheduleToolbarPositionUpdate, true);
+  window.addEventListener("resize", scheduleToolbarPositionUpdate);
   extensionActive = true;
+  scheduleIdleRestore();
 }
 
 function deactivateExtension(): void {
@@ -320,6 +368,8 @@ function deactivateExtension(): void {
 
   document.removeEventListener("selectionchange", selectionChangeListener);
   document.removeEventListener("mousedown", handleDocumentMouseDown, true);
+  document.removeEventListener("scroll", scheduleToolbarPositionUpdate, true);
+  window.removeEventListener("resize", scheduleToolbarPositionUpdate);
   hideToolbar();
   removeRemarkerDecorations();
   overlayHost?.remove();
@@ -329,6 +379,7 @@ function deactivateExtension(): void {
   toolbarPinned = false;
   clearTransientTimer();
   clearLookupPanelHideTimer();
+  cancelActiveStream();
   extensionActive = false;
 }
 
@@ -393,6 +444,7 @@ function createOverlay(): void {
       padding: 12px;
       font-size: 13px;
       line-height: 1.55;
+      overscroll-behavior: contain;
     }
     .panel.visible { display: block; }
     .panel-header {
@@ -408,6 +460,7 @@ function createOverlay(): void {
       max-height: 292px;
       overflow: auto;
       padding-right: 4px;
+      overscroll-behavior: contain;
     }
     .skeleton-stack {
       display: grid;
@@ -538,15 +591,59 @@ function createOverlay(): void {
     .${LOOKUP_CLASS}:hover {
       background: rgba(249, 115, 22, 0.08);
     }
+    .note-editor { display: grid; gap: 10px; }
+    .note-tooltip {
+      position: fixed;
+      display: none;
+      box-sizing: border-box;
+      max-width: min(360px, calc(100vw - 24px));
+      padding: 7px 9px;
+      border: 1px solid rgba(15, 23, 42, 0.16);
+      border-radius: 6px;
+      color: #17202a;
+      background: #fff;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18);
+      font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      pointer-events: none;
+      white-space: pre-wrap;
+    }
+    .note-tooltip.visible { display: block; }
+    .note-editor textarea {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 110px;
+      resize: vertical;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 8px;
+      color: #17202a;
+      background: #fff;
+      font: inherit;
+    }
+    @media (prefers-color-scheme: dark) {
+      .toolbar, .panel, .note-tooltip { color: #e5e7eb; background: #111827; box-shadow: 0 10px 28px rgba(0,0,0,.55); }
+      .panel { border-color: #374151; }
+      .panel-header, .muted { color: #9ca3af; }
+      button, .markdown-body pre, .markdown-body code { color: #e5e7eb; background: #1f2937; }
+      button:hover { background: #374151; }
+      .markdown-body blockquote { border-color: #4b5563; color: #d1d5db; }
+      .markdown-body th, .markdown-body td { border-color: #4b5563; }
+      .markdown-body th { background: #1f2937; }
+      .note-editor textarea { color: #e5e7eb; background: #111827; border-color: #4b5563; }
+      .skeleton-line { background: linear-gradient(90deg,#1f2937 0%,#374151 50%,#1f2937 100%); background-size: 220% 100%; }
+    }
   `;
 
   toolbar = document.createElement("div");
   toolbar.className = "toolbar";
   panel = document.createElement("div");
   panel.className = "panel";
+  noteTooltip = document.createElement("div");
+  noteTooltip.className = "note-tooltip";
   toolbar.addEventListener("mousedown", preserveSelectionInteraction);
   panel.addEventListener("mousedown", preserveSelectionInteraction);
-  shadowRoot.append(style, toolbar, panel);
+  panel.addEventListener("wheel", containPanelWheel, { passive: false });
+  shadowRoot.append(style, toolbar, panel, noteTooltip);
 }
 
 function handleSelectionChange(): void {
@@ -576,7 +673,7 @@ function handleSelectionChange(): void {
     text,
     range,
     rect,
-    isWord: WORD_PATTERN.test(text),
+    isWord: getSelectionKind(text, navigator.language) === "word",
     isCrossBlock:
       getBlockElement(range.startContainer) !==
       getBlockElement(range.endContainer),
@@ -630,7 +727,11 @@ function renderToolbar(selection: SelectionState): void {
   }
 
   toolbar.classList.add("visible");
-  positionAboveSelection(toolbar, selection.rect, 8);
+  trackToolbarAnchor(() => {
+    const rect = getRangeRect(selection.range);
+    if (rect) selection.rect = rect;
+    return rect;
+  });
   panel.classList.remove("visible");
 }
 
@@ -670,18 +771,31 @@ function searchSelectionInGoogle(): void {
 async function speakSelection(): Promise<void> {
   if (!currentSelection) return;
 
-  const response = await sendMessage<{ provider: string; audioUrl?: string }>({
+  const language = detectSpeechLanguage(currentSelection.text, t === CONTENT_MESSAGES["zh-TW"] ? "zh-TW" : navigator.language);
+  const response = await sendMessage<{
+    provider: string;
+    audioDataUrl?: string;
+    audioUrl?: string;
+    language: string;
+  }>({
     type: "GET_PRONUNCIATION",
     word: currentSelection.text,
+    language,
   });
 
-  if (response.audioUrl) {
-    await new Audio(response.audioUrl).play();
+  if (response.audioDataUrl || response.audioUrl) {
+    await new Audio(response.audioDataUrl ?? response.audioUrl).play();
     return;
   }
 
   speechSynthesis.cancel();
-  speechSynthesis.speak(new SpeechSynthesisUtterance(currentSelection.text));
+  const utterance = new SpeechSynthesisUtterance(currentSelection.text);
+  utterance.lang = response.language || language;
+  const voices = speechSynthesis.getVoices();
+  utterance.voice = voices.find((voice) => voice.lang.toLowerCase() === utterance.lang.toLowerCase())
+    ?? voices.find((voice) => voice.lang.toLowerCase().startsWith(utterance.lang.split("-")[0].toLowerCase()))
+    ?? null;
+  speechSynthesis.speak(utterance);
 }
 
 async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
@@ -693,7 +807,7 @@ async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
     currentSelection.isWord ? t.explainingProgress : t.translatingProgress,
     { isLoading: true },
   );
-  const explanation = await sendMessage<SelectionLookupResult>({
+  const request: Extract<LlmStreamClientMessage, { type: "start" }>["payload"] = {
     type: "EXPLAIN_SELECTION",
     selectionKind: currentSelection.isWord ? "word" : "text",
     selectedText: currentSelection.text,
@@ -702,11 +816,17 @@ async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
     sourceTitle: document.title,
     anchor,
     forceRefresh,
-  });
-
+  };
+  let explanation: SelectionLookupResult;
+  try {
+    explanation = await streamExplanation(request);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    throw error;
+  }
   showExplanationPanel(explanation.result, { isLoading: false });
   if (currentSelection.isWord) {
-    applyLookupMarkers([
+    void applyLookupMarkers([
       {
         id: explanation.id,
         word: explanation.selectedText,
@@ -718,6 +838,65 @@ async function explainCurrentSelection(forceRefresh: boolean): Promise<void> {
       },
     ]);
   }
+}
+
+function streamExplanation(
+  payload: Extract<LlmStreamClientMessage, { type: "start" }>["payload"],
+): Promise<SelectionLookupResult> {
+  cancelActiveStream();
+  const requestId = crypto.randomUUID();
+  const port = chrome.runtime.connect({ name: LLM_STREAM_PORT });
+  activeStream = { requestId, port };
+  let accumulated = "";
+  return new Promise((resolve, reject) => {
+    if (activeStream?.requestId === requestId) activeStream.reject = reject;
+    port.onMessage.addListener((event: LlmStreamEvent) => {
+      if (event.requestId !== requestId) return;
+      if (event.type === "chunk") {
+        accumulated += event.content;
+        const stream = activeStream;
+        if (stream && stream.animationFrame === undefined) {
+          stream.animationFrame = requestAnimationFrame(() => {
+            if (activeStream?.requestId === requestId) {
+              activeStream.animationFrame = undefined;
+              showExplanationPanel(accumulated, { isLoading: false });
+            }
+          });
+        }
+      } else if (event.type === "completed") {
+        finishActiveStream(requestId);
+        resolve(event.result);
+      } else if (event.type === "error") {
+        finishActiveStream(requestId);
+        reject(new Error(event.error));
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      if (activeStream?.requestId === requestId) {
+        activeStream = undefined;
+        reject(new Error("LLM stream disconnected before completion."));
+      }
+    });
+    port.postMessage({ type: "start", requestId, payload } satisfies LlmStreamClientMessage);
+  });
+}
+
+function finishActiveStream(requestId: string): void {
+  if (activeStream?.requestId !== requestId) return;
+  if (activeStream.animationFrame !== undefined) cancelAnimationFrame(activeStream.animationFrame);
+  const port = activeStream.port;
+  activeStream = undefined;
+  port.disconnect();
+}
+
+function cancelActiveStream(): void {
+  if (!activeStream) return;
+  const stream = activeStream;
+  activeStream = undefined;
+  stream.port.postMessage({ type: "cancel", requestId: stream.requestId } satisfies LlmStreamClientMessage);
+  if (stream.animationFrame !== undefined) cancelAnimationFrame(stream.animationFrame);
+  stream.port.disconnect();
+  stream.reject?.(new DOMException("LLM request was cancelled.", "AbortError"));
 }
 
 async function saveHighlight(
@@ -808,44 +987,55 @@ async function saveSplitHighlights(
   );
 }
 
-async function restoreHighlights(): Promise<void> {
+async function restoreHighlights(retriesRemaining = 1): Promise<void> {
   currentUrlKey = normalizeUrlKey(location.href);
   const records = await sendMessage<HighlightRecord[]>({
     type: "GET_HIGHLIGHTS_FOR_URL",
     urlKey: currentUrlKey,
   });
   const snapshot = getAnchorTextSnapshot();
+  const validationText = getPageTextForRestoreValidation();
   const restorePlan: Array<{ record: HighlightRecord; match: RangeMatch }> = [];
+  const statusUpdates: Array<{ id: string; status: HighlightStatus }> = [];
 
   for (const record of records) {
     const matches = findRangeMatchesForAnchor(record.anchor, snapshot);
     if (matches.length === 1) {
       restorePlan.push({ record, match: matches[0] });
       if (record.status !== "active") {
-        await sendMessage({
-          type: "UPDATE_HIGHLIGHT_STATUS",
-          id: record.id,
-          status: "active",
-        });
+        statusUpdates.push({ id: record.id, status: "active" });
       }
     } else {
       const status: HighlightStatus =
         matches.length === 0 ? "not_found" : "ambiguous";
       if (record.status !== status) {
-        await sendMessage({
-          type: "UPDATE_HIGHLIGHT_STATUS",
-          id: record.id,
-          status,
-        });
+        statusUpdates.push({ id: record.id, status });
       }
     }
   }
 
-  restorePlan
-    .sort((left, right) => right.match.start - left.match.start)
-    .forEach(({ record, match }) => {
-      wrapRange(match.range, record.color, record.id);
+  if (getPageTextForRestoreValidation() !== validationText) {
+    if (retriesRemaining > 0) await restoreHighlights(retriesRemaining - 1);
+    return;
+  }
+  if (statusUpdates.length) {
+    await sendMessage({ type: "UPDATE_HIGHLIGHT_STATUSES", updates: statusUpdates });
+  }
+  const inserted: HTMLElement[] = [];
+  const completed = await applyInIdleBatches(
+    restorePlan.sort((left, right) => right.match.start - left.match.start),
+    ({ record, match }) => {
+      inserted.push(wrapRange(match.range, record.color, record.id, record.note));
+    },
+    40,
+    () => getPageTextForRestoreValidation() === validationText,
+  );
+  if (!completed) {
+    inserted.reverse().forEach((element) => {
+      if (element.isConnected) unwrapElement(element);
     });
+    if (retriesRemaining > 0) await restoreHighlights(retriesRemaining - 1);
+  }
 }
 
 async function restoreVocabularyMarkers(): Promise<void> {
@@ -853,11 +1043,15 @@ async function restoreVocabularyMarkers(): Promise<void> {
     type: "GET_VOCABULARY_FOR_URL",
     urlKey: currentUrlKey,
   });
-  applyLookupMarkers(records);
+  await applyLookupMarkers(records, 1);
 }
 
-function applyLookupMarkers(records: VocabularyRecord[]): void {
+async function applyLookupMarkers(
+  records: VocabularyRecord[],
+  retriesRemaining = 0,
+): Promise<void> {
   const snapshot = getAnchorTextSnapshot();
+  const validationText = getPageTextForRestoreValidation();
   const normalizedSnapshot = createNormalizedTextMap(snapshot.text);
   const plan: Array<{
     record: VocabularyRecord;
@@ -871,11 +1065,22 @@ function applyLookupMarkers(records: VocabularyRecord[]): void {
     plan.push({ record, match });
   }
 
-  plan
-    .sort((left, right) => right.match.start - left.match.start)
-    .forEach(({ record, match }) => {
-      wrapLookupRange(match.range, record);
+  const inserted: HTMLElement[] = [];
+  const completed = await applyInIdleBatches(
+    plan.sort((left, right) => right.match.start - left.match.start),
+    ({ record, match }) => {
+      const wrapper = wrapLookupRange(match.range, record);
+      if (wrapper) inserted.push(wrapper);
+    },
+    40,
+    () => getPageTextForRestoreValidation() === validationText,
+  );
+  if (!completed) {
+    inserted.reverse().forEach((element) => {
+      if (element.isConnected) unwrapElement(element);
     });
+    if (retriesRemaining > 0) await applyLookupMarkers(records, retriesRemaining - 1);
+  }
 }
 
 function findLookupRangeMatch(
@@ -1069,8 +1274,8 @@ function isWordBoundary(char: string | undefined): boolean {
   return !char || !/[A-Za-z0-9]/.test(char);
 }
 
-function wrapLookupRange(range: Range, record: VocabularyRecord): void {
-  if (rangeIntersectsSelector(range, `.${LOOKUP_CLASS}`)) return;
+function wrapLookupRange(range: Range, record: VocabularyRecord): HTMLElement | undefined {
+  if (rangeIntersectsSelector(range, `.${LOOKUP_CLASS}`)) return undefined;
 
   const wrapper = document.createElement("span");
   wrapper.className = LOOKUP_CLASS;
@@ -1094,6 +1299,7 @@ function wrapLookupRange(range: Range, record: VocabularyRecord): void {
     wrapper.append(fragment);
     range.insertNode(wrapper);
   }
+  return wrapper;
 }
 
 function createTextAnchor(range: Range): TextAnchor {
@@ -1221,22 +1427,33 @@ function createRangeFromTextOffsets(
   return range;
 }
 
-function wrapRange(range: Range, color: HighlightColor, id: string): void {
+function wrapRange(
+  range: Range,
+  color: HighlightColor,
+  id: string,
+  note?: string,
+): HTMLElement {
   const wrapper = document.createElement("mark");
   wrapper.className = HIGHLIGHT_CLASS;
   wrapper.dataset.remarkerId = id;
+  setHighlightNote(wrapper, note);
   wrapper.style.background = HIGHLIGHT_COLORS[color];
   wrapper.style.borderRadius = "3px";
   wrapper.style.padding = "0 1px";
   wrapper.addEventListener("click", (event) => {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.toString().trim()) return;
     event.stopPropagation();
     suppressSelectionChange();
     renderExistingHighlightToolbar(wrapper, id);
   });
   wrapper.addEventListener("mousedown", (event) => {
-    event.stopPropagation();
-    suppressSelectionChange();
+    if (event.button !== 0) event.stopPropagation();
   });
+  wrapper.addEventListener("mouseenter", () => showHighlightNoteTooltip(wrapper));
+  wrapper.addEventListener("mouseleave", hideHighlightNoteTooltip);
+  wrapper.addEventListener("focus", () => showHighlightNoteTooltip(wrapper));
+  wrapper.addEventListener("blur", hideHighlightNoteTooltip);
 
   try {
     range.surroundContents(wrapper);
@@ -1245,17 +1462,22 @@ function wrapRange(range: Range, color: HighlightColor, id: string): void {
     wrapper.append(fragment);
     range.insertNode(wrapper);
   }
+  return wrapper;
 }
 
 function renderExistingHighlightToolbar(
   element: HTMLElement,
   id: string,
 ): void {
+  hideHighlightNoteTooltip();
   panelPinned = false;
   toolbarPinned = true;
   clearTransientTimer();
   toolbar.className = "toolbar";
   toolbar.replaceChildren();
+  toolbar.append(
+    createIconButton("notebook-pen", t.note, () => showNoteEditor(element, id)),
+  );
   toolbar.append(
     createIconButton("copy", t.copy, () =>
       navigator.clipboard.writeText(element.innerText),
@@ -1285,7 +1507,91 @@ function renderExistingHighlightToolbar(
   }
 
   toolbar.classList.add("visible");
-  positionAboveSelection(toolbar, element.getBoundingClientRect(), 8);
+  trackToolbarAnchor(() =>
+    element.isConnected ? element.getBoundingClientRect() : undefined,
+  );
+}
+
+function showNoteEditor(element: HTMLElement, id: string): void {
+  toolbar.classList.remove("visible");
+  panelPinned = true;
+  panel.className = "panel visible";
+  panel.replaceChildren();
+  const editor = document.createElement("div");
+  editor.className = "note-editor";
+  for (const eventType of EDITOR_ISOLATED_EVENT_TYPES) {
+    editor.addEventListener(eventType, stopHostPageEvent);
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = element.dataset.remarkerNote ?? "";
+  textarea.setAttribute("aria-label", t.note);
+  const actions = document.createElement("div");
+  actions.className = "panel-actions";
+  const cancel = document.createElement("button");
+  cancel.textContent = t.cancel;
+  cancel.addEventListener("click", () => {
+    panelPinned = false;
+    panel.classList.remove("visible");
+  });
+  const save = document.createElement("button");
+  save.textContent = t.save;
+  save.addEventListener("click", async () => {
+    const note = textarea.value.trim();
+    await sendMessage({ type: "UPDATE_HIGHLIGHT_NOTE", id, note });
+    setHighlightNote(element, note);
+    panelPinned = false;
+    panel.classList.remove("visible");
+  });
+  actions.append(cancel, save);
+  editor.append(textarea, actions);
+  panel.append(editor);
+  positionPanel(element.getBoundingClientRect());
+  textarea.focus();
+  textarea.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    cancel.click();
+  });
+}
+
+function stopHostPageEvent(event: Event): void {
+  event.stopPropagation();
+}
+
+function setHighlightNote(element: HTMLElement, note?: string): void {
+  const value = note?.trim() ?? "";
+  if (value) {
+    element.dataset.remarkerNote = value;
+    const characters = Array.from(value);
+    element.title = characters.length > 56 ? `${characters.slice(0, 56).join("")}…` : value;
+    element.tabIndex = 0;
+  } else {
+    delete element.dataset.remarkerNote;
+    element.removeAttribute("title");
+    element.removeAttribute("tabindex");
+    hideHighlightNoteTooltip();
+  }
+}
+
+function showHighlightNoteTooltip(element: HTMLElement): void {
+  const value = element.dataset.remarkerNote;
+  if (!value || !noteTooltip) return;
+  const characters = Array.from(value);
+  noteTooltip.textContent = characters.length > 56
+    ? `${characters.slice(0, 56).join("")}…`
+    : value;
+  noteTooltip.classList.add("visible");
+  const rect = element.getBoundingClientRect();
+  const tooltipRect = noteTooltip.getBoundingClientRect();
+  noteTooltip.style.left = `${Math.min(
+    Math.max(12, rect.left),
+    window.innerWidth - tooltipRect.width - 12,
+  )}px`;
+  noteTooltip.style.top = `${Math.max(12, rect.top - tooltipRect.height - 8)}px`;
+}
+
+function hideHighlightNoteTooltip(): void {
+  noteTooltip?.classList.remove("visible");
 }
 
 function getContextForRange(range: Range): string {
@@ -1450,10 +1756,52 @@ function positionAboveSelection(
   rect: DOMRect,
   gap: number,
 ): void {
-  const top = Math.max(8, rect.top - element.offsetHeight - gap);
-  const left = Math.min(window.innerWidth - 16, Math.max(8, rect.left));
+  const isAnchorVisible =
+    rect.bottom > 0 &&
+    rect.top < window.innerHeight &&
+    rect.right > 0 &&
+    rect.left < window.innerWidth;
+  element.style.visibility = isAnchorVisible ? "" : "hidden";
+  if (!isAnchorVisible) return;
+
+  const top =
+    toolbarPlacement === "above"
+      ? rect.top - element.offsetHeight - gap
+      : rect.bottom + gap;
+  const maxLeft = Math.max(8, window.innerWidth - element.offsetWidth - 8);
+  const left = Math.min(maxLeft, Math.max(8, rect.left));
   element.style.top = `${top}px`;
   element.style.left = `${left}px`;
+}
+
+function trackToolbarAnchor(getRect: () => DOMRect | undefined): void {
+  toolbarAnchor = getRect;
+  const rect = getRect();
+  if (!rect) {
+    toolbar.style.visibility = "hidden";
+    return;
+  }
+  toolbarPlacement =
+    rect.top - toolbar.offsetHeight - 8 >= 8 ? "above" : "below";
+  positionAboveSelection(toolbar, rect, 8);
+}
+
+function scheduleToolbarPositionUpdate(): void {
+  if (toolbarPositionFrame !== undefined) return;
+  toolbarPositionFrame = window.requestAnimationFrame(() => {
+    toolbarPositionFrame = undefined;
+    updateToolbarPosition();
+  });
+}
+
+function updateToolbarPosition(): void {
+  if (!toolbar?.classList.contains("visible") || !toolbarAnchor) return;
+  const rect = toolbarAnchor();
+  if (!rect) {
+    toolbar.style.visibility = "hidden";
+    return;
+  }
+  positionAboveSelection(toolbar, rect, 8);
 }
 
 function positionPanel(selectionRect: DOMRect): void {
@@ -1532,7 +1880,10 @@ function showErrorPanel(error: unknown): void {
 }
 
 function isMissingLlmConfigError(message: string): boolean {
-  return message === MISSING_LLM_CONFIG_ERROR;
+  return (
+    message === MISSING_LLM_CONFIG_ERROR ||
+    message.includes("LLM configuration is missing")
+  );
 }
 
 function showExplanationPanel(
@@ -1577,6 +1928,7 @@ function showExplanationPanel(
   }
 
   const close = createIconButton("x", t.close, () => {
+    cancelActiveStream();
     panelPinned = false;
     hideToolbar();
   });
@@ -1674,11 +2026,56 @@ function hideToolbar(): void {
   if (!toolbar || !panel) return;
   panelPinned = false;
   toolbarPinned = false;
+  toolbarAnchor = undefined;
+  if (toolbarPositionFrame !== undefined) {
+    window.cancelAnimationFrame(toolbarPositionFrame);
+    toolbarPositionFrame = undefined;
+  }
   clearTransientTimer();
   clearLookupPanelHideTimer();
+  toolbar.style.visibility = "";
   toolbar.classList.remove("visible");
   toolbar.classList.remove("success");
   panel.classList.remove("visible");
+}
+
+function containPanelWheel(event: WheelEvent): void {
+  const target = event.target as HTMLElement;
+  const scrollable = target.closest(".panel-body, .panel") as HTMLElement | null;
+  if (!scrollable) return;
+  const atTop = scrollable.scrollTop <= 0;
+  const atBottom = Math.ceil(scrollable.scrollTop + scrollable.clientHeight) >= scrollable.scrollHeight;
+  if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) event.preventDefault();
+  event.stopPropagation();
+}
+
+function scheduleIdleRestore(): void {
+  const run = () => {
+    void restoreHighlights().then(restoreVocabularyMarkers).catch((error) => {
+      console.warn("[Remarker] restore failed", error);
+    });
+  };
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(run, { timeout: 1200 });
+  } else {
+    globalThis.setTimeout(run, 120);
+  }
+}
+
+async function applyInIdleBatches<T>(
+  items: T[],
+  apply: (item: T) => void,
+  batchSize = 40,
+  shouldContinue: () => boolean = () => true,
+): Promise<boolean> {
+  for (let index = 0; index < items.length; index += batchSize) {
+    if (!shouldContinue()) return false;
+    items.slice(index, index + batchSize).forEach(apply);
+    if (index + batchSize < items.length) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
+  return true;
 }
 
 function removeRemarkerDecorations(): void {
@@ -1706,9 +2103,12 @@ function handleDocumentMouseDown(event: MouseEvent): void {
   if (target instanceof Node && shadowRoot.contains(target)) return;
   if (
     target instanceof HTMLElement &&
-    target.closest(`.${HIGHLIGHT_CLASS}, .${LOOKUP_CLASS}`)
+    target.closest(`.${LOOKUP_CLASS}`)
   ) {
     suppressSelectionChange();
+    return;
+  }
+  if (target instanceof HTMLElement && target.closest(`.${HIGHLIGHT_CLASS}`)) {
     return;
   }
   if (panelPinned) return;
@@ -1720,9 +2120,16 @@ function handleDocumentMouseDown(event: MouseEvent): void {
 }
 
 function preserveSelectionInteraction(event: MouseEvent): void {
-  event.preventDefault();
+  const target = event.target;
+  const isEditableTarget =
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    (target instanceof HTMLElement && target.isContentEditable);
+  if (!isEditableTarget) {
+    event.preventDefault();
+    suppressSelectionChange();
+  }
   event.stopPropagation();
-  suppressSelectionChange();
 }
 
 function suppressSelectionChange(): void {
@@ -1755,6 +2162,20 @@ function showButtonSuccess(
 
 function getDocumentText(): string {
   return getAnchorTextSnapshot().text;
+}
+
+function getPageTextForRestoreValidation(): string {
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.textContent || node.parentElement?.closest("#remarker-root")) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  let text = "";
+  while (walker.nextNode()) text += (walker.currentNode as Text).data;
+  return text;
 }
 
 function getAnchorTextSnapshot(): TextSnapshot {
@@ -2081,6 +2502,7 @@ type IconName =
   | "circle"
   | "copy"
   | "highlighter"
+  | "notebook-pen"
   | "refresh"
   | "search"
   | "sparkles"
@@ -2096,6 +2518,8 @@ const ICONS: Record<IconName, string> = {
   copy: '<svg viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>',
   highlighter:
     '<svg viewBox="0 0 24 24"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg>',
+  "notebook-pen":
+    '<svg viewBox="0 0 24 24"><path d="M13.4 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7.4"/><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><path d="M18.4 2.6a2.17 2.17 0 0 1 3 3L12 15l-4 1 1-4Z"/></svg>',
   refresh:
     '<svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M16 8h5V3"/></svg>',
   search:

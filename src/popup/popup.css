@@ -185,6 +185,12 @@ body {
   margin-top: 10px;
 }
 
+.review-button {
+  grid-column: 1 / -1;
+  border-color: #dc2626;
+  background: #dc2626;
+}
+
 button {
   min-height: 38px;
   padding: 8px 10px;

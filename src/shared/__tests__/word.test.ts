@@ -17,4 +17,27 @@ describe("word detection", () => {
   it("returns phrase for non-word selections", () => {
     expect(getSelectionKind("hello world")).toBe("phrase");
   });
+
+  it("recognizes CJK words and rejects sentences", () => {
+    expect(getSelectionKind("中", "zh-CN")).toBe("word");
+    expect(getSelectionKind("词汇", "zh-CN")).toBe("word");
+    expect(getSelectionKind("这是一个句子。", "zh-CN")).toBe("phrase");
+    expect(getSelectionKind("テスト", "ja-JP")).toBe("word");
+    expect(getSelectionKind("테스트", "ko-KR")).toBe("word");
+    expect(getSelectionKind("あ", "ja-JP")).toBe("word");
+    expect(getSelectionKind("中文 English", "zh-CN")).toBe("phrase");
+    expect(getSelectionKind("中文！", "zh-CN")).toBe("phrase");
+  });
+
+  it("uses Unicode script runs when Intl.Segmenter is unavailable", () => {
+    const segmenter = Intl.Segmenter;
+    Object.defineProperty(Intl, "Segmenter", { configurable: true, value: undefined });
+    try {
+      expect(getSelectionKind("词汇", "zh-CN")).toBe("word");
+      expect(getSelectionKind("词汇 测试", "zh-CN")).toBe("phrase");
+      expect(getSelectionKind("中文English", "zh-CN")).toBe("phrase");
+    } finally {
+      Object.defineProperty(Intl, "Segmenter", { configurable: true, value: segmenter });
+    }
+  });
 });

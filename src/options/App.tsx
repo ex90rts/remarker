@@ -7,6 +7,7 @@ import {
   Divider,
   FormControlLabel,
   IconButton,
+  Menu,
   MenuItem,
   Paper,
   Popover,
@@ -25,16 +26,19 @@ import {
   Typography,
   useMediaQuery,
 } from "@mui/material";
+import { keyframes } from "@mui/material/styles";
 import {
   Bug,
   Archive,
   NotebookText,
+  SquarePen,
   ChevronDown,
   ChevronRight,
   Check,
   Copy,
   Download,
   FileText,
+  FlaskConical,
   Github,
   Highlighter,
   Info,
@@ -54,10 +58,21 @@ import {
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent, ReactElement, ReactNode } from "react";
 import {
+  ACTIVITY_LEVEL_COLORS,
+  buildDailyActivity,
+  getActivityColor,
+  getLocalDateKey,
+} from "../shared/activity";
+import type { DailyActivity } from "../shared/activity";
+import {
   createBackupJson,
   createHighlightsMarkdownExport,
-  createTranslationMarkdownExport,
-  createVocabularyMarkdownExport,
+  createIncrementalBackupJson,
+  createNotionHighlightsExport,
+  createNotionTranslationExport,
+  createNotionVocabularyExport,
+  createObsidianTranslationExport,
+  createObsidianVocabularyExport,
 } from "../shared/export";
 import {
   detectBrowserLanguage,
@@ -67,9 +82,14 @@ import {
 } from "../shared/i18n";
 import type { Messages } from "../shared/i18n";
 import { markdownToSafeHtml } from "../shared/markdown";
+import { getTodayReviewProgress } from "../shared/review";
+import type { TodayReviewProgress } from "../shared/review";
 import type {
+  DataQuery,
   ListAllDataResult,
+  OptionsOverviewResult,
   PronunciationResult,
+  QueryResult,
   RuntimeMessage,
 } from "../shared/messages";
 import {
@@ -77,6 +97,7 @@ import {
   LLM_PROVIDER_PRESETS,
   RECORDS_PAGE_SIZE_OPTIONS,
   getLlmProviderPreset,
+  getEffectiveLlmConfig,
   getDefaultPromptTemplate,
   isDefaultPromptTemplate,
   normalizeLlmProviderConfig,
@@ -91,6 +112,7 @@ import type {
   HighlightRecord,
   HighlightStatus,
   LlmProviderConfig,
+  PromptTemplateType,
   RecordsPageSize,
   VocabularyRecord,
 } from "../shared/types";
@@ -117,7 +139,11 @@ interface ToastState {
   durationMs?: number;
 }
 
-type Notify = (message: string, severity?: ToastSeverity) => void;
+type Notify = (
+  message: string,
+  severity?: ToastSeverity,
+  durationMs?: number,
+) => void;
 type RunAction = (
   action: () => Promise<void> | void,
   successMessage?: string,
@@ -134,11 +160,17 @@ const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
 const REMARKER_GITHUB_URL = "https://github.com/ex90rts/remarker";
 const REPORT_ISSUE_URL = "https://github.com/ex90rts/remarker/issues/new";
 const TOAST_DURATION_MS = 1500;
-const PROMPT_REQUIRED_VARIABLES = [
-  "{{task}}",
-  "{{selection}}",
-  "{{context}}",
-] as const;
+const LLM_TEST_ERROR_TOAST_DURATION_MS = 3000;
+const PROMPT_REQUIRED_VARIABLES = ["{{selection}}", "{{context}}"] as const;
+
+const llmOnboardingShimmer = keyframes`
+  0% {
+    transform: translateX(-200%) skewX(-24deg);
+  }
+  55%, 100% {
+    transform: translateX(600%) skewX(-24deg);
+  }
+`;
 
 const twoLineClampSx = {
   display: "-webkit-box",
@@ -183,14 +215,21 @@ const markdownBodySx = {
 
 export function App() {
   const [tab, setTab] = useState<TabKey>(() => getInitialTab());
-  const [data, setData] = useState<ListAllDataResult | undefined>();
+  const [vocabularyView, setVocabularyView] = useState<"reading" | "review">(
+    () =>
+      window.location.hash.startsWith("#vocabulary-review")
+        ? "review"
+        : "reading",
+  );
+  const [overview, setOverview] = useState<OptionsOverviewResult | undefined>();
+  const [dataRevision, setDataRevision] = useState(0);
   const [toast, setToast] = useState<ToastState | undefined>();
   const [includeSensitive, setIncludeSensitive] = useState(false);
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [sourceFilterNavigation, setSourceFilterNavigation] = useState<
     SourceFilterNavigation | undefined
   >();
-  const language = data?.settings.ui.language ?? detectBrowserLanguage();
+  const language = overview?.settings.ui.language ?? detectBrowserLanguage();
   const t = getMessages(language);
   const isNarrowSidebar = useMediaQuery("(max-width:1279.95px)");
   const sidebarCollapsed = manuallyCollapsed || isNarrowSidebar;
@@ -200,14 +239,23 @@ export function App() {
   }, []);
 
   async function reload() {
-    const result = await sendMessage<ListAllDataResult>({
-      type: "LIST_ALL_DATA",
+    const result = await sendMessage<OptionsOverviewResult>({
+      type: "GET_OPTIONS_OVERVIEW",
     });
-    setData(result);
+    setOverview(result);
+    setDataRevision((revision) => revision + 1);
   }
 
-  function notify(message: string, severity: ToastSeverity = "success") {
-    setToast({ id: Date.now(), message, severity });
+  function getFullSnapshot(): Promise<ListAllDataResult> {
+    return sendMessage<ListAllDataResult>({ type: "LIST_ALL_DATA" });
+  }
+
+  function notify(
+    message: string,
+    severity: ToastSeverity = "success",
+    durationMs?: number,
+  ) {
+    setToast({ id: Date.now(), message, severity, durationMs });
   }
 
   async function runAction(
@@ -224,7 +272,23 @@ export function App() {
 
   function switchTab(nextTab: TabKey) {
     setTab(nextTab);
+    if (nextTab === "vocabulary") setVocabularyView("reading");
     window.history.replaceState(null, "", `#${nextTab}`);
+  }
+
+  function switchVocabularyView(view: "reading" | "review") {
+    setVocabularyView(view);
+    window.history.replaceState(
+      null,
+      "",
+      view === "review" ? "#vocabulary-review" : "#vocabulary",
+    );
+  }
+
+  function openVocabularyReview() {
+    setTab("vocabulary");
+    setVocabularyView("review");
+    window.history.replaceState(null, "", "#vocabulary-review");
   }
 
   function switchTabWithSourceFilter(
@@ -239,21 +303,14 @@ export function App() {
     switchTab(nextTab);
   }
 
-  const counts = useMemo(
-    () => ({
-      footprints: data?.footprints.length ?? 0,
-      highlights: data?.highlights.length ?? 0,
-      vocabulary:
-        data?.vocabulary.filter((item) => item.selectionKind !== "text")
-          .length ?? 0,
-      translations:
-        data?.vocabulary.filter((item) => item.selectionKind === "text")
-          .length ?? 0,
-    }),
-    [data],
-  );
+  const counts = overview?.counts ?? {
+    footprints: 0,
+    highlights: 0,
+    vocabulary: 0,
+    translations: 0,
+  };
   const recordsPageSize =
-    data?.settings.ui.recordsPageSize ?? DEFAULT_RECORDS_PAGE_SIZE;
+    overview?.settings.ui.recordsPageSize ?? DEFAULT_RECORDS_PAGE_SIZE;
   const activeTabLabel = getTabLabel(tab, t);
 
   return (
@@ -515,57 +572,104 @@ export function App() {
             <Box>
               <Typography variant="h4">{activeTabLabel}</Typography>
             </Box>
+            {tab === "vocabulary" && (
+              <Tabs
+                value={vocabularyView}
+                onChange={(_, value: "reading" | "review") =>
+                  switchVocabularyView(value)
+                }
+                sx={{
+                  minHeight: 32,
+                  "& .MuiTabs-indicator": {
+                    height: 2,
+                    borderRadius: 1,
+                  },
+                  "& .MuiTab-root": {
+                    minWidth: 72,
+                    minHeight: 32,
+                    px: 1.25,
+                    py: 0.5,
+                    fontSize: "0.8125rem",
+                    lineHeight: 1.25,
+                    textTransform: "none",
+                  },
+                }}
+              >
+                <Tab
+                  value="reading"
+                  label={getReviewCopy(language).readingView}
+                />
+                <Tab
+                  value="review"
+                  label={getReviewCopy(language).reviewView}
+                />
+              </Tabs>
+            )}
           </Stack>
           <Paper variant="outlined" sx={{ minWidth: 0, overflow: "hidden" }}>
             <Box p={{ xs: 1.5, md: 2.25 }} sx={{ overflowX: "auto" }}>
               {tab === "footprints" && (
                 <FootprintsTab
-                  footprints={data?.footprints ?? []}
                   recordsPageSize={recordsPageSize}
                   onChange={reload}
+                  getFullSnapshot={getFullSnapshot}
+                  refreshRevision={dataRevision}
                   onOpenTabWithSourceFilter={switchTabWithSourceFilter}
+                  onOpenVocabularyReview={openVocabularyReview}
                   runAction={runAction}
+                  language={language}
                   t={t}
                 />
               )}
               {tab === "highlights" && (
                 <HighlightsTab
-                  highlights={data?.highlights ?? []}
                   recordsPageSize={recordsPageSize}
                   onChange={reload}
+                  getFullSnapshot={getFullSnapshot}
+                  refreshRevision={dataRevision}
                   runAction={runAction}
                   notify={notify}
                   sourceFilterNavigation={sourceFilterNavigation}
                   t={t}
                 />
               )}
-              {tab === "vocabulary" && (
-                <VocabularyTab
-                  vocabulary={data?.vocabulary ?? []}
-                  selectionKind="word"
-                  recordsPageSize={recordsPageSize}
-                  onChange={reload}
-                  runAction={runAction}
-                  notify={notify}
-                  sourceFilterNavigation={sourceFilterNavigation}
-                  t={t}
-                />
-              )}
+              {tab === "vocabulary" &&
+                (vocabularyView === "reading" ? (
+                  <VocabularyTab
+                    selectionKind="word"
+                    recordsPageSize={recordsPageSize}
+                    onChange={reload}
+                    getFullSnapshot={getFullSnapshot}
+                    refreshRevision={dataRevision}
+                    runAction={runAction}
+                    notify={notify}
+                    sourceFilterNavigation={sourceFilterNavigation}
+                    t={t}
+                  />
+                ) : (
+                  <VocabularyReviewView
+                    language={language}
+                    vocabularyCount={counts.vocabulary}
+                    onChange={reload}
+                  />
+                ))}
               {tab === "translations" && (
                 <VocabularyTab
-                  vocabulary={data?.vocabulary ?? []}
                   selectionKind="text"
                   recordsPageSize={recordsPageSize}
                   onChange={reload}
+                  getFullSnapshot={getFullSnapshot}
+                  refreshRevision={dataRevision}
                   runAction={runAction}
                   notify={notify}
                   sourceFilterNavigation={sourceFilterNavigation}
                   t={t}
                 />
               )}
-              {tab === "settings" && data && (
+              {tab === "settings" && overview && (
                 <SettingsTab
-                  data={data}
+                  settingsValue={overview.settings}
+                  getFullSnapshot={getFullSnapshot}
                   includeSensitive={includeSensitive}
                   setIncludeSensitive={setIncludeSensitive}
                   runAction={runAction}
@@ -734,7 +838,8 @@ function getTabLabel(tab: TabKey, t: Messages): string {
 }
 
 function getInitialTab(): TabKey {
-  const hash = window.location.hash.replace(/^#/, "");
+  const hash = window.location.hash.replace(/^#/, "").split("?")[0];
+  if (hash === "vocabulary-review") return "vocabulary";
   return isTabKey(hash) ? hash : "footprints";
 }
 
@@ -817,7 +922,15 @@ function Toast({
   );
 }
 
-function SourceLink({ href, label }: { href: string; label: string }) {
+function SourceLink({
+  href,
+  label,
+  truncate = true,
+}: {
+  href: string;
+  label: string;
+  truncate?: boolean;
+}) {
   return (
     <Typography
       component="a"
@@ -827,7 +940,14 @@ function SourceLink({ href, label }: { href: string; label: string }) {
       variant="body2"
       title={label}
       sx={{
-        ...twoLineClampSx,
+        ...(truncate
+          ? twoLineClampSx
+          : {
+              display: "inline",
+              overflow: "visible",
+              overflowWrap: "anywhere",
+              whiteSpace: "normal",
+            }),
         color: "#00319d",
         textDecoration: "none",
         "&:hover": { textDecoration: "underline" },
@@ -869,6 +989,59 @@ function TableActionBar({
   );
 }
 
+interface ExportDropdownOption {
+  key: string;
+  label: string;
+  onSelect: () => Promise<void> | void;
+}
+
+function ExportDropdownButton({
+  label,
+  options,
+}: {
+  label: string;
+  options: ExportDropdownOption[];
+}) {
+  const [anchorElement, setAnchorElement] = useState<HTMLElement | null>(null);
+  const isOpen = Boolean(anchorElement);
+
+  return (
+    <>
+      <Button
+        variant="outlined"
+        startIcon={<FileText size={16} />}
+        endIcon={<ChevronDown size={15} />}
+        aria-haspopup="menu"
+        aria-expanded={isOpen ? "true" : undefined}
+        onClick={(event: MouseEvent<HTMLElement>) =>
+          setAnchorElement(event.currentTarget)
+        }
+      >
+        {label}
+      </Button>
+      <Menu
+        anchorEl={anchorElement}
+        open={isOpen}
+        onClose={() => setAnchorElement(null)}
+        MenuListProps={{ "aria-label": label }}
+      >
+        {options.map((option) => (
+          <MenuItem
+            key={option.key}
+            sx={{ fontSize: "0.85rem" }}
+            onClick={() => {
+              setAnchorElement(null);
+              void option.onSelect();
+            }}
+          >
+            {option.label}
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
+
 function downloadFile(filename: string, content: string, type: string) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -879,42 +1052,495 @@ function downloadFile(filename: string, content: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-function FootprintsTab({
-  footprints,
-  recordsPageSize,
-  onChange,
-  onOpenTabWithSourceFilter,
-  runAction,
+interface ActivityCalendarDay {
+  date: Date;
+  dateKey: string;
+  isInRange: boolean;
+}
+
+function LearningActivityHeatmap({
+  getFullSnapshot,
+  refreshRevision,
+  language,
+  onOpenVocabularyReview,
   t,
 }: {
-  footprints: FootprintListItem[];
+  getFullSnapshot: () => Promise<ListAllDataResult>;
+  refreshRevision: number;
+  language: AppSettings["ui"]["language"];
+  onOpenVocabularyReview: () => void;
+  t: Messages;
+}) {
+  const [activity, setActivity] = useState<Record<string, DailyActivity>>({});
+  const [reviewProgress, setReviewProgress] = useState<TodayReviewProgress>(
+    EMPTY_REVIEW_PROGRESS,
+  );
+  const [isLoading, setIsLoading] = useState(true);
+  const columns = useMemo(
+    () => createSixMonthActivityCalendar(new Date()),
+    [refreshRevision],
+  );
+  const monthFormatter = useMemo(
+    () => new Intl.DateTimeFormat(language, { month: "short" }),
+    [language],
+  );
+  const dayFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(language, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }),
+    [language],
+  );
+
+  useEffect(() => {
+    let isCurrent = true;
+    setIsLoading(true);
+    void getFullSnapshot()
+      .then((snapshot) => {
+        if (!isCurrent) return;
+        setActivity(
+          buildDailyActivity(snapshot.highlights, snapshot.vocabulary),
+        );
+        setReviewProgress(
+          getTodayReviewProgress(snapshot.vocabulary, new Date().toISOString()),
+        );
+      })
+      .catch(() => {
+        if (isCurrent) {
+          setActivity({});
+          setReviewProgress(EMPTY_REVIEW_PROGRESS);
+        }
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoading(false);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [getFullSnapshot, refreshRevision]);
+
+  return (
+    <Stack
+      direction={{ xs: "column", md: "row" }}
+      spacing={2}
+      alignItems="stretch"
+      sx={{ px: 0.5, pt: 0.25 }}
+    >
+      <Paper
+        variant="outlined"
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          p: 2,
+          boxShadow: "none",
+          bgcolor: "#fbfcfe",
+        }}
+      >
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          spacing={2}
+          sx={{ mb: 1.25 }}
+        >
+          <Typography variant="h6">{t.options.activity.title}</Typography>
+          <ActivityLegend t={t} />
+        </Stack>
+        <Box sx={{ pb: 0.25 }}>
+          <Box
+            role="img"
+            aria-label={t.options.activity.title}
+            sx={{
+              display: "grid",
+              gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`,
+              gridTemplateRows: `20px repeat(${ACTIVITY_HEATMAP_ROWS}, auto)`,
+              gridAutoFlow: "column",
+              gap: `${ACTIVITY_HEATMAP_GAP}px`,
+              width: "100%",
+              opacity: isLoading ? 0.55 : 1,
+              transition: "opacity 120ms ease",
+            }}
+          >
+            {columns.map((column, columnIndex) => {
+              const monthStart = column.find(
+                (day) => day.isInRange && day.date.getDate() === 1,
+              );
+              return (
+                <Fragment key={column[0].dateKey}>
+                  {monthStart && (
+                    <Typography
+                      component="span"
+                      variant="caption"
+                      sx={{
+                        gridColumn: `${columnIndex + 1} / span 6`,
+                        gridRow: 1,
+                        alignSelf: "start",
+                        color: "text.secondary",
+                        lineHeight: "16px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {monthFormatter.format(monthStart.date)}
+                    </Typography>
+                  )}
+                  {column.map((day, dayIndex) => {
+                    const dayActivity = activity[day.dateKey] ?? EMPTY_ACTIVITY;
+                    const isMonthStart = day.date.getDate() === 1;
+                    const tooltipContent = (
+                      <Box sx={{ py: 0.25 }}>
+                        <Typography
+                          component="div"
+                          variant="caption"
+                          sx={{ color: "inherit", fontWeight: 700 }}
+                        >
+                          {interpolate(t.options.activity.daySummary, {
+                            date: dayFormatter.format(day.date),
+                            total: dayActivity.total,
+                          })}
+                        </Typography>
+                        <Stack spacing={0.25} sx={{ mt: 0.5 }}>
+                          {[
+                            interpolate(t.options.activity.highlightSummary, {
+                              count: dayActivity.highlights,
+                            }),
+                            interpolate(t.options.activity.vocabularySummary, {
+                              count: dayActivity.vocabulary,
+                            }),
+                            interpolate(t.options.activity.translationSummary, {
+                              count: dayActivity.translations,
+                            }),
+                          ].map((summary) => (
+                            <Typography
+                              key={summary}
+                              component="div"
+                              variant="caption"
+                              sx={{ color: "inherit", fontWeight: 700 }}
+                            >
+                              {`• ${summary}`}
+                            </Typography>
+                          ))}
+                        </Stack>
+                      </Box>
+                    );
+                    const cell = (
+                      <Box
+                        component="span"
+                        sx={{
+                          gridColumn: columnIndex + 1,
+                          gridRow: dayIndex + 2,
+                          width: "100%",
+                          aspectRatio: "1 / 1",
+                          borderRadius: "3px",
+                          bgcolor: day.isInRange
+                            ? getActivityColor(dayActivity.total)
+                            : "transparent",
+                          border: "1px solid",
+                          borderColor: day.isInRange
+                            ? isMonthStart
+                              ? ACTIVITY_MONTH_START_BORDER_COLOR
+                              : "rgba(27, 31, 36, 0.06)"
+                            : "transparent",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    );
+                    return day.isInRange ? (
+                      <Tooltip
+                        key={day.dateKey}
+                        arrow
+                        placement="top"
+                        enterDelay={150}
+                        title={tooltipContent}
+                      >
+                        {cell}
+                      </Tooltip>
+                    ) : (
+                      <Box
+                        key={day.dateKey}
+                        component="span"
+                        sx={{
+                          gridColumn: columnIndex + 1,
+                          gridRow: dayIndex + 2,
+                          width: "100%",
+                          aspectRatio: "1 / 1",
+                        }}
+                      />
+                    );
+                  })}
+                </Fragment>
+              );
+            })}
+          </Box>
+        </Box>
+      </Paper>
+      <TodayReviewCard
+        progress={reviewProgress}
+        isLoading={isLoading}
+        onOpenReview={onOpenVocabularyReview}
+        t={t}
+      />
+    </Stack>
+  );
+}
+
+function ActivityLegend({ t }: { t: Messages }) {
+  return (
+    <Stack direction="row" spacing={0.75} alignItems="center" flexShrink={0}>
+      <Typography variant="caption" color="text.secondary">
+        {t.options.activity.less}
+      </Typography>
+      {ACTIVITY_LEVEL_COLORS.map((color) => (
+        <Box
+          key={color}
+          component="span"
+          sx={{
+            width: 14,
+            height: 14,
+            borderRadius: "3px",
+            bgcolor: color,
+            border: "1px solid rgba(27, 31, 36, 0.06)",
+          }}
+        />
+      ))}
+      <Typography variant="caption" color="text.secondary">
+        {t.options.activity.more}
+      </Typography>
+    </Stack>
+  );
+}
+
+const EMPTY_ACTIVITY: DailyActivity = {
+  highlights: 0,
+  vocabulary: 0,
+  translations: 0,
+  total: 0,
+};
+
+const EMPTY_REVIEW_PROGRESS: TodayReviewProgress = {
+  completed: 0,
+  pending: 0,
+  total: 0,
+};
+
+function TodayReviewCard({
+  progress,
+  isLoading,
+  onOpenReview,
+  t,
+}: {
+  progress: TodayReviewProgress;
+  isLoading: boolean;
+  onOpenReview: () => void;
+  t: Messages;
+}) {
+  const percentage = progress.total
+    ? Math.round((progress.completed / progress.total) * 100)
+    : 0;
+  const isEmpty = !isLoading && progress.total === 0;
+  const isCompleted =
+    progress.total > 0 && progress.completed >= progress.total;
+  return (
+    <Paper
+      variant="outlined"
+      sx={{
+        width: { xs: "100%", md: 248 },
+        flexShrink: 0,
+        p: 2,
+        boxShadow: "none",
+        bgcolor: "#fbfcfe",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+      }}
+    >
+      <Typography variant="h6">{t.options.activity.reviewTitle}</Typography>
+      {isLoading ? (
+        <Box aria-busy="true" sx={{ flex: 1 }} />
+      ) : isEmpty ? (
+        <Box
+          role="status"
+          sx={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            py: 1.5,
+          }}
+        >
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ lineHeight: 1.7 }}
+          >
+            {t.options.activity.reviewEmpty}
+          </Typography>
+        </Box>
+      ) : (
+        <>
+          <Box sx={{ my: 1.25 }}>
+            <Typography
+              component="div"
+              sx={{
+                color: "text.primary",
+                fontSize: "1.9rem",
+                fontWeight: 750,
+                lineHeight: 1,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {progress.completed}
+              <Box
+                component="span"
+                sx={{
+                  color: "text.secondary",
+                  fontSize: "1rem",
+                  fontWeight: 600,
+                }}
+              >
+                {` / ${progress.total}`}
+              </Box>
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {interpolate(t.options.activity.reviewProgress, {
+                completed: progress.completed,
+                total: progress.total,
+              })}
+            </Typography>
+          </Box>
+          <Box
+            sx={{
+              height: 6,
+              overflow: "hidden",
+              borderRadius: 999,
+              bgcolor: ACTIVITY_LEVEL_COLORS[0],
+            }}
+          >
+            <Box
+              sx={{
+                width: `${percentage}%`,
+                height: "100%",
+                borderRadius: "inherit",
+                bgcolor: ACTIVITY_LEVEL_COLORS[3],
+                transition: "width 160ms ease",
+              }}
+            />
+          </Box>
+          {isCompleted ? (
+            <Box
+              role="status"
+              sx={{
+                mt: 1.5,
+                alignSelf: "flex-start",
+                px: 1.25,
+                py: 0.75,
+                borderRadius: 1.5,
+                bgcolor: "#dafbe1",
+                color: "#116329",
+              }}
+            >
+              <Typography
+                component="span"
+                variant="body2"
+                sx={{ color: "inherit", fontWeight: 700 }}
+              >
+                {t.options.activity.reviewCompleted}
+              </Typography>
+            </Box>
+          ) : (
+            <Button
+              size="small"
+              variant="contained"
+              endIcon={<ChevronRight size={15} />}
+              onClick={onOpenReview}
+              sx={{ mt: 1.5, alignSelf: "flex-start" }}
+            >
+              {t.options.activity.startReview}
+            </Button>
+          )}
+        </>
+      )}
+    </Paper>
+  );
+}
+
+const ACTIVITY_HEATMAP_ROWS = 4;
+const ACTIVITY_HEATMAP_GAP = 4;
+const ACTIVITY_MONTH_START_BORDER_COLOR = "#0073ffff";
+
+function createSixMonthActivityCalendar(now: Date): ActivityCalendarDay[][] {
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const rangeStart = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+
+  const columns: ActivityCalendarDay[][] = [];
+  const cursor = new Date(rangeStart);
+  while (cursor <= today) {
+    const column: ActivityCalendarDay[] = [];
+    for (let dayIndex = 0; dayIndex < ACTIVITY_HEATMAP_ROWS; dayIndex += 1) {
+      const date = new Date(cursor);
+      column.push({
+        date,
+        dateKey: getLocalDateKey(date)!,
+        isInRange: date >= rangeStart && date <= today,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    columns.push(column);
+  }
+  return columns;
+}
+
+function FootprintsTab({
+  recordsPageSize,
+  onChange,
+  getFullSnapshot,
+  refreshRevision,
+  onOpenTabWithSourceFilter,
+  onOpenVocabularyReview,
+  runAction,
+  language,
+  t,
+}: {
   recordsPageSize: RecordsPageSize;
   onChange: () => Promise<void>;
+  getFullSnapshot: () => Promise<ListAllDataResult>;
+  refreshRevision: number;
   onOpenTabWithSourceFilter: (
     tab: "highlights" | "vocabulary",
     sourceTitle: string,
   ) => void;
+  onOpenVocabularyReview: () => void;
   runAction: RunAction;
+  language: AppSettings["ui"]["language"];
   t: Messages;
 }) {
   const [titleFilter, setTitleFilter] = useState("");
   const [siteFilter, setSiteFilter] = useState("");
   const [starredOnly, setStarredOnly] = useState(false);
-  const filteredFootprints = useMemo(
-    () =>
-      footprints.filter((item) => {
-        const matchesTitle = includesFuzzy(item.sourceTitle, titleFilter);
-        const matchesSite = includesFuzzy(item.siteName, siteFilter);
-        const matchesStarred = !starredOnly || item.starred;
-        return matchesTitle && matchesSite && matchesStarred;
-      }),
-    [footprints, siteFilter, starredOnly, titleFilter],
+  const [page, setPage] = useState(0);
+  const query = useMemo<DataQuery>(
+    () => ({
+      page,
+      pageSize: recordsPageSize,
+      title: titleFilter,
+      site: siteFilter,
+      starredOnly,
+    }),
+    [page, recordsPageSize, siteFilter, starredOnly, titleFilter],
   );
-  const { page, pageItems, setPage } = usePagedItems(
-    filteredFootprints,
-    recordsPageSize,
+  const { items: pageItems, total } = useRuntimeQuery<FootprintListItem>(
+    "QUERY_FOOTPRINTS",
+    query,
+    refreshRevision,
   );
   const hasFilters = Boolean(titleFilter || siteFilter || starredOnly);
+
+  useEffect(
+    () => setPage(0),
+    [recordsPageSize, siteFilter, starredOnly, titleFilter],
+  );
+  useValidServerPage(page, total, recordsPageSize, setPage);
 
   function resetFilters() {
     setTitleFilter("");
@@ -924,6 +1550,14 @@ function FootprintsTab({
 
   return (
     <Stack spacing={1.5}>
+      <LearningActivityHeatmap
+        getFullSnapshot={getFullSnapshot}
+        refreshRevision={refreshRevision}
+        language={language}
+        onOpenVocabularyReview={onOpenVocabularyReview}
+        t={t}
+      />
+      <Divider />
       <TableActionBar
         filters={
           <>
@@ -1104,11 +1738,11 @@ function FootprintsTab({
             ))
           )}
         </TableBody>
-        {filteredFootprints.length > 0 && (
+        {total > 0 && (
           <TableFooter>
             <TableRow>
               <RecordsTablePagination
-                count={filteredFootprints.length}
+                count={total}
                 page={page}
                 recordsPageSize={recordsPageSize}
                 onPageChange={setPage}
@@ -1153,17 +1787,19 @@ function CountLink({
 }
 
 function HighlightsTab({
-  highlights,
   recordsPageSize,
   onChange,
+  getFullSnapshot,
+  refreshRevision,
   runAction,
   notify,
   sourceFilterNavigation,
   t,
 }: {
-  highlights: HighlightRecord[];
   recordsPageSize: RecordsPageSize;
   onChange: () => Promise<void>;
+  getFullSnapshot: () => Promise<ListAllDataResult>;
+  refreshRevision: number;
   runAction: RunAction;
   notify: Notify;
   sourceFilterNavigation?: SourceFilterNavigation;
@@ -1172,28 +1808,30 @@ function HighlightsTab({
   const [textFilter, setTextFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
   const [colorFilter, setColorFilter] = useState<HighlightColor | "">("");
-  const filteredHighlights = useMemo(
-    () =>
-      highlights.filter((highlight) => {
-        const matchesText = includesFuzzy(highlight.selectedText, textFilter);
-        const matchesSource = includesFuzzy(
-          `${highlight.sourceTitle || ""} ${highlight.sourceUrl}`,
-          sourceFilter,
-        );
-        const matchesColor = !colorFilter || highlight.color === colorFilter;
-        return matchesText && matchesSource && matchesColor;
-      }),
-    [colorFilter, highlights, sourceFilter, textFilter],
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [page, setPage] = useState(0);
+  const query = useMemo<DataQuery>(
+    () => ({
+      page,
+      pageSize: recordsPageSize,
+      word: textFilter,
+      source: sourceFilter,
+      color: colorFilter,
+    }),
+    [colorFilter, page, recordsPageSize, sourceFilter, textFilter],
   );
-  const sortedHighlights = useMemo(
-    () => sortByCreatedAtDesc(filteredHighlights),
-    [filteredHighlights],
-  );
-  const { page, pageItems, setPage } = usePagedItems(
-    sortedHighlights,
-    recordsPageSize,
+  const { items: pageItems, total } = useRuntimeQuery<HighlightRecord>(
+    "QUERY_HIGHLIGHTS",
+    query,
+    refreshRevision,
   );
   const hasFilters = Boolean(textFilter || sourceFilter || colorFilter);
+
+  useEffect(
+    () => setPage(0),
+    [colorFilter, recordsPageSize, sourceFilter, textFilter],
+  );
+  useValidServerPage(page, total, recordsPageSize, setPage);
 
   useEffect(() => {
     if (sourceFilterNavigation?.tab !== "highlights") return;
@@ -1204,6 +1842,21 @@ function HighlightsTab({
     setTextFilter("");
     setSourceFilter("");
     setColorFilter("");
+  }
+
+  async function getFilteredHighlights(): Promise<HighlightRecord[]> {
+    const snapshot = await getFullSnapshot();
+    return sortByCreatedAtDesc(
+      snapshot.highlights.filter(
+        (highlight) =>
+          includesFuzzy(highlight.selectedText, textFilter) &&
+          includesFuzzy(
+            `${highlight.sourceTitle || ""} ${highlight.sourceUrl}`,
+            sourceFilter,
+          ) &&
+          (!colorFilter || highlight.color === colorFilter),
+      ),
+    );
   }
 
   return (
@@ -1254,23 +1907,43 @@ function HighlightsTab({
         }
         actions={
           <>
-            <Button
-              variant="outlined"
-              startIcon={<FileText size={16} />}
-              onClick={() =>
-                void runAction(
-                  () =>
-                    downloadFile(
-                      "remarker-highlights.md",
-                      createHighlightsMarkdownExport(sortedHighlights),
-                      "text/markdown",
+            <ExportDropdownButton
+              label={t.options.actions.export}
+              options={[
+                {
+                  key: "obsidian-markdown",
+                  label: "Obsidian Markdown",
+                  onSelect: () =>
+                    runAction(
+                      async () =>
+                        downloadFile(
+                          "remarker-highlights.md",
+                          createHighlightsMarkdownExport(
+                            await getFilteredHighlights(),
+                          ),
+                          "text/markdown",
+                        ),
+                      t.options.notices.markdownExported,
                     ),
-                  t.options.notices.markdownExported,
-                )
-              }
-            >
-              {t.options.actions.export}
-            </Button>
+                },
+                {
+                  key: "notion-markdown",
+                  label: "Notion Markdown",
+                  onSelect: () =>
+                    runAction(
+                      async () =>
+                        downloadFile(
+                          "remarker-highlights-notion.md",
+                          createNotionHighlightsExport(
+                            await getFilteredHighlights(),
+                          ),
+                          "text/markdown",
+                        ),
+                      t.options.notices.markdownExported,
+                    ),
+                },
+              ]}
+            />
             <Button
               variant="outlined"
               startIcon={<RefreshCcw size={16} />}
@@ -1283,9 +1956,18 @@ function HighlightsTab({
           </>
         }
       />
-      <Table size="small">
+      <Table size="small" sx={{ tableLayout: "fixed", width: "100%" }}>
+        <colgroup>
+          <col style={{ width: 48 }} />
+          <col style={{ width: 360 }} />
+          <col style={{ width: 240 }} />
+          <col style={{ width: 120 }} />
+          <col style={{ width: 88 }} />
+          <col style={{ width: 104 }} />
+        </colgroup>
         <TableHead>
           <TableRow>
+            <TableCell />
             <TableCell>{t.options.columns.highlightedText}</TableCell>
             <TableCell>{t.options.columns.source}</TableCell>
             <TableCell>{t.options.columns.status}</TableCell>
@@ -1295,90 +1977,165 @@ function HighlightsTab({
         </TableHead>
         <TableBody>
           {pageItems.length === 0 ? (
-            <EmptyTableRow colSpan={5} message={t.options.empty.highlights} />
+            <EmptyTableRow colSpan={6} message={t.options.empty.highlights} />
           ) : (
             pageItems.map((highlight) => (
-              <TableRow key={highlight.id}>
-                <TableCell sx={{ maxWidth: 420 }}>
-                  <Typography
-                    component="div"
-                    variant="body2"
-                    title={highlight.selectedText}
-                    sx={twoLineClampSx}
-                  >
-                    {highlight.selectedText}
-                  </Typography>
-                  <Typography
-                    component="div"
-                    variant="caption"
-                    color="text.secondary"
-                  >
-                    {t.common.created} {formatCreatedAt(highlight.createdAt)}
-                  </Typography>
-                </TableCell>
-                <TableCell sx={{ width: 240, maxWidth: 240 }}>
-                  <SourceLink
-                    href={highlight.sourceUrl}
-                    label={highlight.sourceTitle || highlight.sourceUrl}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    size="small"
-                    label={highlight.status}
-                    title={getHighlightStatusDescription(highlight.status, t)}
-                  />
-                </TableCell>
-                <TableCell>
-                  <Box
-                    component="span"
-                    title={highlight.color}
+              <Fragment key={highlight.id}>
+                <TableRow>
+                  <TableCell>
+                    <IconButton
+                      size="small"
+                      aria-label={
+                        expandedRows[highlight.id]
+                          ? t.options.actions.collapseHighlight
+                          : t.options.actions.expandHighlight
+                      }
+                      onClick={() =>
+                        setExpandedRows((rows) => ({
+                          ...rows,
+                          [highlight.id]: !rows[highlight.id],
+                        }))
+                      }
+                    >
+                      {expandedRows[highlight.id] ? (
+                        <ChevronDown size={16} />
+                      ) : (
+                        <ChevronRight size={16} />
+                      )}
+                    </IconButton>
+                  </TableCell>
+                  <TableCell sx={{ maxWidth: 360 }}>
+                    <Typography
+                      component="div"
+                      variant="body2"
+                      sx={{
+                        ...twoLineClampSx,
+                        lineHeight: 1.25,
+                        fontWeight: 500,
+                        mb: "6px",
+                      }}
+                    >
+                      {highlight.selectedText}
+                    </Typography>
+                    <Typography
+                      component="div"
+                      variant="caption"
+                      color="text.secondary"
+                    >
+                      {t.common.created} {formatCreatedAt(highlight.createdAt)}
+                      {highlight.note && (
+                        <Tooltip
+                          arrow
+                          placement="top"
+                          title={
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                whiteSpace: "pre-wrap",
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {highlight.note}
+                            </Typography>
+                          }
+                        >
+                          <Box
+                            component="span"
+                            tabIndex={0}
+                            sx={{ cursor: "help", outlineOffset: 2 }}
+                          >
+                            {t.options.columns.hasNoteSuffix}
+                          </Box>
+                        </Tooltip>
+                      )}
+                    </Typography>
+                  </TableCell>
+                  <TableCell sx={{ width: 240, maxWidth: 240 }}>
+                    <SourceLink
+                      href={highlight.sourceUrl}
+                      label={highlight.sourceTitle || highlight.sourceUrl}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Chip
+                      size="small"
+                      label={highlight.status}
+                      title={getHighlightStatusDescription(highlight.status, t)}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Box
+                      component="span"
+                      title={highlight.color}
+                      sx={{
+                        display: "inline-block",
+                        width: 22,
+                        height: 22,
+                        borderRadius: "6px",
+                        border: "1px solid rgba(15, 23, 42, 0.16)",
+                        bgcolor: HIGHLIGHT_COLORS[highlight.color],
+                        verticalAlign: "middle",
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell align="center">
+                    <CopyIconButton
+                      label={t.options.actions.copyHighlightedText}
+                      text={highlight.selectedText}
+                      notify={notify}
+                      t={t}
+                    />
+                    <ConfirmDeleteIconButton
+                      label={t.options.actions.deleteHighlight}
+                      message={t.options.confirmations.deleteHighlight}
+                      onConfirm={async () => {
+                        await runAction(async () => {
+                          await sendMessage({
+                            type: "DELETE_HIGHLIGHT",
+                            id: highlight.id,
+                          });
+                          await onChange();
+                        }, t.options.notices.highlightDeleted);
+                      }}
+                      t={t}
+                    />
+                  </TableCell>
+                </TableRow>
+                <TableRow>
+                  <TableCell
+                    colSpan={6}
                     sx={{
-                      display: "inline-block",
-                      width: 22,
-                      height: 22,
-                      borderRadius: "6px",
-                      border: "1px solid rgba(15, 23, 42, 0.16)",
-                      bgcolor: HIGHLIGHT_COLORS[highlight.color],
-                      verticalAlign: "middle",
+                      py: 0,
+                      borderBottom: expandedRows[highlight.id] ? undefined : 0,
                     }}
-                  />
-                </TableCell>
-                <TableCell align="center">
-                  <CopyIconButton
-                    label={t.options.actions.copyHighlightedText}
-                    text={highlight.selectedText}
-                    notify={notify}
-                    t={t}
-                  />
-                  <ConfirmDeleteIconButton
-                    label={t.options.actions.deleteHighlight}
-                    message={t.options.confirmations.deleteHighlight}
-                    onConfirm={async () => {
-                      await runAction(async () => {
-                        await sendMessage({
-                          type: "DELETE_HIGHLIGHT",
-                          id: highlight.id,
-                        });
-                        await onChange();
-                      }, t.options.notices.highlightDeleted);
-                    }}
-                    t={t}
-                  />
-                </TableCell>
-              </TableRow>
+                  >
+                    <Collapse
+                      in={Boolean(expandedRows[highlight.id])}
+                      timeout="auto"
+                      unmountOnExit
+                    >
+                      <HighlightDetails
+                        highlight={highlight}
+                        onChange={onChange}
+                        runAction={runAction}
+                        t={t}
+                      />
+                    </Collapse>
+                  </TableCell>
+                </TableRow>
+              </Fragment>
             ))
           )}
         </TableBody>
-        {sortedHighlights.length > 0 && (
+        {total > 0 && (
           <TableFooter>
             <TableRow>
               <RecordsTablePagination
-                count={sortedHighlights.length}
+                count={total}
                 page={page}
                 recordsPageSize={recordsPageSize}
                 onPageChange={setPage}
-                colSpan={5}
+                colSpan={6}
               />
             </TableRow>
           </TableFooter>
@@ -1388,20 +2145,179 @@ function HighlightsTab({
   );
 }
 
+function HighlightDetails({
+  highlight,
+  onChange,
+  runAction,
+  t,
+}: {
+  highlight: HighlightRecord;
+  onChange: () => Promise<void>;
+  runAction: RunAction;
+  t: Messages;
+}) {
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState(highlight.note ?? "");
+
+  useEffect(() => {
+    if (!isEditingNote) setNoteDraft(highlight.note ?? "");
+  }, [highlight.note, isEditingNote]);
+
+  async function saveNote() {
+    await runAction(async () => {
+      await sendMessage({
+        type: "UPDATE_HIGHLIGHT_NOTE",
+        id: highlight.id,
+        note: noteDraft,
+      });
+      setIsEditingNote(false);
+      await onChange();
+    }, t.options.notices.highlightNoteSaved);
+  }
+
+  return (
+    <Box
+      sx={{
+        display: "grid",
+        gap: 1,
+        ml: 5,
+        px: 2,
+        py: 1.5,
+        color: "text.primary",
+      }}
+    >
+      <HighlightDetailLine label={t.options.columns.highlightedText}>
+        <Box
+          component="span"
+          sx={{
+            fontSize: "0.95rem",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {highlight.selectedText}
+        </Box>
+      </HighlightDetailLine>
+      <Box>
+        <Typography component="div" variant="body2">
+          <Box component="b">{t.options.columns.note}</Box>:{" "}
+          <Box
+            component="span"
+            sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
+          >
+            {highlight.note || t.options.empty.note}
+          </Box>
+          <Tooltip
+            arrow
+            title={
+              highlight.note
+                ? t.options.actions.editHighlightNote
+                : t.options.actions.addHighlightNote
+            }
+          >
+            <SquarePen
+              size={16}
+              role="button"
+              tabIndex={0}
+              aria-label={
+                highlight.note
+                  ? t.options.actions.editHighlightNote
+                  : t.options.actions.addHighlightNote
+              }
+              style={{
+                cursor: "pointer",
+                marginLeft: "6px",
+                verticalAlign: "text-bottom",
+              }}
+              onClick={() => {
+                setNoteDraft(highlight.note ?? "");
+                setIsEditingNote(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                setNoteDraft(highlight.note ?? "");
+                setIsEditingNote(true);
+              }}
+            />
+          </Tooltip>
+        </Typography>
+        {isEditingNote && (
+          <Stack spacing={1} sx={{ mt: 1 }}>
+            <TextField
+              autoFocus
+              fullWidth
+              multiline
+              minRows={3}
+              value={noteDraft}
+              label={t.options.columns.note}
+              onChange={(event) => setNoteDraft(event.target.value)}
+            />
+            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+              <Button
+                size="small"
+                onClick={() => {
+                  setNoteDraft(highlight.note ?? "");
+                  setIsEditingNote(false);
+                }}
+              >
+                {t.common.cancel}
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => void saveNote()}
+              >
+                {t.options.actions.saveHighlightNote}
+              </Button>
+            </Stack>
+          </Stack>
+        )}
+      </Box>
+      <HighlightDetailLine label={t.options.columns.source}>
+        <SourceLink
+          href={highlight.sourceUrl}
+          label={highlight.sourceTitle || highlight.sourceUrl}
+          truncate={false}
+        />
+      </HighlightDetailLine>
+      <HighlightDetailLine label={t.common.created}>
+        {formatCreatedAt(highlight.createdAt)}
+      </HighlightDetailLine>
+    </Box>
+  );
+}
+
+function HighlightDetailLine({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <Typography component="div" variant="body2">
+      <Box component="b">{label}</Box>: {children}
+    </Typography>
+  );
+}
+
 function VocabularyTab({
-  vocabulary,
   selectionKind,
   recordsPageSize,
   onChange,
+  getFullSnapshot,
+  refreshRevision,
   runAction,
   notify,
   sourceFilterNavigation,
   t,
 }: {
-  vocabulary: VocabularyRecord[];
   selectionKind: "word" | "text";
   recordsPageSize: RecordsPageSize;
   onChange: () => Promise<void>;
+  getFullSnapshot: () => Promise<ListAllDataResult>;
+  refreshRevision: number;
   runAction: RunAction;
   notify: Notify;
   sourceFilterNavigation?: SourceFilterNavigation;
@@ -1414,33 +2330,38 @@ function VocabularyTab({
   const [wordFilter, setWordFilter] = useState("");
   const [contextFilter, setContextFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
-  const filteredVocabulary = useMemo(
-    () =>
-      vocabulary.filter((item) => {
-        if ((item.selectionKind ?? "word") !== selectionKind) return false;
-        const matchesWord = includesFuzzy(item.word, wordFilter);
-        const matchesContext = includesFuzzy(
-          item.contextSentence,
-          contextFilter,
-        );
-        const matchesSource = includesFuzzy(
-          `${item.sourceTitle || ""} ${item.sourceUrl}`,
-          sourceFilter,
-        );
-        return matchesWord && matchesContext && matchesSource;
-      }),
-    [contextFilter, selectionKind, sourceFilter, vocabulary, wordFilter],
+  const [page, setPage] = useState(0);
+  const query = useMemo<DataQuery>(
+    () => ({
+      page,
+      pageSize: recordsPageSize,
+      selectionKind,
+      word: wordFilter,
+      context: contextFilter,
+      source: sourceFilter,
+    }),
+    [
+      contextFilter,
+      page,
+      recordsPageSize,
+      selectionKind,
+      sourceFilter,
+      wordFilter,
+    ],
   );
-  const sortedVocabulary = useMemo(
-    () => sortByCreatedAtDesc(filteredVocabulary),
-    [filteredVocabulary],
-  );
-  const { page, pageItems, setPage } = usePagedItems(
-    sortedVocabulary,
-    recordsPageSize,
+  const { items: pageItems, total } = useRuntimeQuery<VocabularyRecord>(
+    "QUERY_VOCABULARY",
+    query,
+    refreshRevision,
   );
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const hasFilters = Boolean(wordFilter || contextFilter || sourceFilter);
+
+  useEffect(
+    () => setPage(0),
+    [contextFilter, recordsPageSize, selectionKind, sourceFilter, wordFilter],
+  );
+  useValidServerPage(page, total, recordsPageSize, setPage);
 
   useEffect(() => {
     const currentTab = isTranslation ? "translations" : "vocabulary";
@@ -1452,6 +2373,22 @@ function VocabularyTab({
     setWordFilter("");
     setContextFilter("");
     setSourceFilter("");
+  }
+
+  async function getFilteredVocabulary(): Promise<VocabularyRecord[]> {
+    const snapshot = await getFullSnapshot();
+    return sortByCreatedAtDesc(
+      snapshot.vocabulary.filter(
+        (item) =>
+          (item.selectionKind ?? "word") === selectionKind &&
+          includesFuzzy(item.word, wordFilter) &&
+          includesFuzzy(item.contextSentence, contextFilter) &&
+          includesFuzzy(
+            `${item.sourceTitle || ""} ${item.sourceUrl}`,
+            sourceFilter,
+          ),
+      ),
+    );
   }
 
   return (
@@ -1489,27 +2426,45 @@ function VocabularyTab({
         }
         actions={
           <>
-            <Button
-              variant="outlined"
-              startIcon={<FileText size={16} />}
-              onClick={() =>
-                void runAction(
-                  () =>
-                    downloadFile(
-                      isTranslation
-                        ? "remarker-translations.md"
-                        : "remarker-new-words.md",
-                      isTranslation
-                        ? createTranslationMarkdownExport(sortedVocabulary)
-                        : createVocabularyMarkdownExport(sortedVocabulary),
-                      "text/markdown",
-                    ),
-                  t.options.notices.markdownExported,
-                )
-              }
-            >
-              {t.options.actions.export}
-            </Button>
+            <ExportDropdownButton
+              label={t.options.actions.export}
+              options={[
+                {
+                  key: "obsidian-markdown",
+                  label: "Obsidian Markdown",
+                  onSelect: () =>
+                    runAction(async () => {
+                      const records = await getFilteredVocabulary();
+                      downloadFile(
+                        isTranslation
+                          ? "remarker-translations.md"
+                          : "remarker-new-words.md",
+                        isTranslation
+                          ? createObsidianTranslationExport(records)
+                          : createObsidianVocabularyExport(records),
+                        "text/markdown",
+                      );
+                    }, t.options.notices.markdownExported),
+                },
+                {
+                  key: "notion-markdown",
+                  label: "Notion Markdown",
+                  onSelect: () =>
+                    runAction(async () => {
+                      const records = await getFilteredVocabulary();
+                      downloadFile(
+                        isTranslation
+                          ? "remarker-translations-notion.md"
+                          : "remarker-new-words-notion.md",
+                        isTranslation
+                          ? createNotionTranslationExport(records)
+                          : createNotionVocabularyExport(records),
+                        "text/markdown",
+                      );
+                    }, t.options.notices.markdownExported),
+                },
+              ]}
+            />
             <Button
               variant="outlined"
               startIcon={<RefreshCcw size={16} />}
@@ -1595,6 +2550,15 @@ function VocabularyTab({
                     >
                       {item.word}
                     </Typography>
+                    {!isTranslation && item.phonetic && (
+                      <Typography
+                        component="div"
+                        variant="caption"
+                        color="text.secondary"
+                      >
+                        /{item.phonetic}/
+                      </Typography>
+                    )}
                     <Typography
                       component="div"
                       variant="caption"
@@ -1791,11 +2755,11 @@ function VocabularyTab({
             ))
           )}
         </TableBody>
-        {sortedVocabulary.length > 0 && (
+        {total > 0 && (
           <TableFooter>
             <TableRow>
               <RecordsTablePagination
-                count={sortedVocabulary.length}
+                count={total}
                 page={page}
                 recordsPageSize={recordsPageSize}
                 onPageChange={setPage}
@@ -1809,27 +2773,307 @@ function VocabularyTab({
   );
 }
 
-function usePagedItems<T>(items: T[], recordsPageSize: RecordsPageSize) {
-  const [page, setPage] = useState(0);
-  const pageCount = Math.max(1, Math.ceil(items.length / recordsPageSize));
-  const safePage = Math.min(page, pageCount - 1);
+function VocabularyReviewView({
+  language,
+  vocabularyCount,
+  onChange,
+}: {
+  language: AppSettings["ui"]["language"];
+  vocabularyCount: number;
+  onChange: () => Promise<void>;
+}) {
+  const copy = getReviewCopy(language);
+  const [queue, setQueue] = useState<VocabularyRecord[]>([]);
+  const [flipped, setFlipped] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [dueCount, setDueCount] = useState(0);
+  const [nextReviewAt, setNextReviewAt] = useState<string | undefined>();
+
+  async function loadQueue() {
+    setLoading(true);
+    const now = new Date().toISOString();
+    const [records, status] = await Promise.all([
+      sendMessage<VocabularyRecord[]>({
+        type: "GET_REVIEW_QUEUE",
+        now,
+        limit: 100,
+      }),
+      sendMessage<{ dueCount: number; nextReviewAt?: string }>({
+        type: "GET_REVIEW_STATUS",
+        now,
+      }),
+    ]);
+    setQueue(records);
+    setDueCount(status.dueCount);
+    setNextReviewAt(status.nextReviewAt);
+    setFlipped(false);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    setPage(0);
-  }, [items, recordsPageSize]);
+    void loadQueue();
+  }, []);
+
+  async function submit(rating: "unfamiliar" | "hesitant" | "skilled") {
+    const current = queue[0];
+    if (!current || submitting) return;
+    setSubmitting(true);
+    try {
+      await sendMessage<VocabularyRecord>({
+        type: "SUBMIT_VOCABULARY_REVIEW",
+        id: current.id,
+        rating,
+        reviewedAt: new Date().toISOString(),
+      });
+      setQueue((records) => records.slice(1));
+      setDueCount((count) => Math.max(0, count - 1));
+      setFlipped(false);
+      await onChange();
+      if (queue.length === 1) await loadQueue();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return <Typography color="text.secondary">{copy.loading}</Typography>;
+  }
+
+  const current = queue[0];
+  if (!current) {
+    return (
+      <Stack alignItems="center" spacing={1.5} sx={{ py: 8 }}>
+        <Check size={34} color="#16a34a" />
+        <Typography variant="h6">
+          {vocabularyCount ? copy.completed : copy.noVocabulary}
+        </Typography>
+        <Typography color="text.secondary">
+          {vocabularyCount && nextReviewAt
+            ? `${copy.nextReview}: ${formatCreatedAt(nextReviewAt)}`
+            : copy.lookupHint}
+        </Typography>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack alignItems="center" spacing={2.5} sx={{ py: 3 }}>
+      <Typography color="text.secondary">
+        {copy.dueCount.replace("{{count}}", String(dueCount))}
+      </Typography>
+      <Paper
+        variant="outlined"
+        role="button"
+        tabIndex={0}
+        onClick={() => setFlipped(true)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") setFlipped(true);
+        }}
+        sx={{
+          width: "min(680px, 100%)",
+          minHeight: 330,
+          p: 4,
+          cursor: flipped ? "default" : "pointer",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+        }}
+      >
+        <Stack spacing={2} alignItems="center">
+          <Typography variant="h3" textAlign="center">
+            {current.word}
+          </Typography>
+          {current.phonetic && (
+            <Typography color="text.secondary">/{current.phonetic}/</Typography>
+          )}
+          <Button
+            startIcon={<Volume2 size={16} />}
+            onClick={(event) => {
+              event.stopPropagation();
+              void speakWord(current.word, language);
+            }}
+          >
+            {copy.speak}
+          </Button>
+          {!flipped ? (
+            <Typography color="text.secondary">{copy.flipHint}</Typography>
+          ) : (
+            <Stack spacing={2} width="100%">
+              <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  {copy.context}
+                </Typography>
+                <Typography>{current.contextSentence}</Typography>
+              </Box>
+              <Box
+                className="markdown-body"
+                sx={markdownBodySx}
+                dangerouslySetInnerHTML={{
+                  __html: markdownToSafeHtml(current.translation || ""),
+                }}
+              />
+              <Typography variant="caption" color="text.secondary">
+                {current.sourceTitle || current.sourceUrl}
+              </Typography>
+            </Stack>
+          )}
+        </Stack>
+      </Paper>
+      <Stack direction="row" spacing={1.5}>
+        <Button
+          variant="outlined"
+          color="error"
+          disabled={!flipped || submitting}
+          onClick={() => void submit("unfamiliar")}
+        >
+          {copy.unfamiliar}
+        </Button>
+        <Button
+          variant="outlined"
+          color="warning"
+          disabled={!flipped || submitting}
+          onClick={() => void submit("hesitant")}
+        >
+          {copy.hesitant}
+        </Button>
+        <Button
+          variant="contained"
+          color="success"
+          disabled={!flipped || submitting}
+          onClick={() => void submit("skilled")}
+        >
+          {copy.skilled}
+        </Button>
+      </Stack>
+    </Stack>
+  );
+}
+
+function getReviewCopy(language: AppSettings["ui"]["language"]) {
+  const copies = {
+    "zh-CN": {
+      readingView: "阅读视图",
+      reviewView: "复习视图",
+      loading: "正在加载复习队列…",
+      completed: "今天的复习已完成",
+      noVocabulary: "还没有可复习的生词",
+      nextReview: "下次复习",
+      lookupHint: "去网页中查一个词，它会自动进入复习队列。",
+      dueCount: "今日还有 {{count}} 个词待复习",
+      flipHint: "点击卡片查看释义",
+      context: "上下文",
+      speak: "发音",
+      unfamiliar: "生疏",
+      hesitant: "犹豫",
+      skilled: "熟练",
+    },
+    "zh-TW": {
+      readingView: "閱讀檢視",
+      reviewView: "複習檢視",
+      loading: "正在載入複習佇列…",
+      completed: "今天的複習已完成",
+      noVocabulary: "還沒有可複習的生詞",
+      nextReview: "下次複習",
+      lookupHint: "到網頁中查一個詞，它會自動進入複習佇列。",
+      dueCount: "今天還有 {{count}} 個詞待複習",
+      flipHint: "點擊卡片查看解釋",
+      context: "上下文",
+      speak: "發音",
+      unfamiliar: "生疏",
+      hesitant: "猶豫",
+      skilled: "熟練",
+    },
+    en: {
+      readingView: "Reading",
+      reviewView: "Review",
+      loading: "Loading review queue…",
+      completed: "Today's review is complete",
+      noVocabulary: "No vocabulary to review yet",
+      nextReview: "Next review",
+      lookupHint:
+        "Look up a word on a web page and it will enter the review queue.",
+      dueCount: "{{count}} words due today",
+      flipHint: "Click the card to reveal the explanation",
+      context: "Context",
+      speak: "Speak",
+      unfamiliar: "Unfamiliar",
+      hesitant: "Hesitant",
+      skilled: "Skilled",
+    },
+    es: {
+      readingView: "Lectura",
+      reviewView: "Repaso",
+      loading: "Cargando la cola de repaso…",
+      completed: "El repaso de hoy está completo",
+      noVocabulary: "Aún no hay vocabulario para repasar",
+      nextReview: "Próximo repaso",
+      lookupHint: "Busca una palabra en una página para añadirla al repaso.",
+      dueCount: "Quedan {{count}} palabras para hoy",
+      flipHint: "Haz clic para ver la explicación",
+      context: "Contexto",
+      speak: "Pronunciar",
+      unfamiliar: "Desconocida",
+      hesitant: "Dudosa",
+      skilled: "Dominada",
+    },
+  } as const;
+  return copies[language] ?? copies.en;
+}
+
+function getOnboardingCopy(language: AppSettings["ui"]["language"]) {
+  const copies = {
+    "zh-CN": {
+      title: "开始使用 ReMarker",
+      body: "ReMarker 的查词和翻译需要 LLM 支持，插件采用 BYOK 模式，本身不提供 API 服务，请先配置好你自己 LLM 提供商的 Base URL、API Key 和模型。网页划线、笔记和本地数据管理无需 LLM 支持，可直接使用。",
+    },
+    "zh-TW": {
+      title: "開始使用 ReMarker",
+      body: "ReMarker 的查詞與翻譯需要 LLM 支援。外掛採用 BYOK 模式，本身不提供 API 服務，請先設定好你自己的 LLM 供應商 Base URL、API Key 與模型。網頁標記、筆記與本機資料管理不需要 LLM 支援，可直接使用。",
+    },
+    en: {
+      title: "Get started with ReMarker",
+      body: "ReMarker requires LLM support for word lookup and translation. The extension uses a BYOK model and does not provide an API service itself. Configure the Base URL, API key, and model for your own LLM provider first. Web highlighting, notes, and local data management do not require an LLM and can be used immediately.",
+    },
+    es: {
+      title: "Empieza con ReMarker",
+      body: "ReMarker necesita un LLM para consultar palabras y traducir. La extensión utiliza el modelo BYOK y no proporciona ningún servicio de API. Configura primero la URL base, la clave API y el modelo de tu propio proveedor de LLM. El resaltado de páginas web, las notas y la gestión de datos locales no necesitan un LLM y se pueden usar directamente.",
+    },
+  } as const;
+  return copies[language];
+}
+
+function useRuntimeQuery<T>(
+  type: "QUERY_FOOTPRINTS" | "QUERY_HIGHLIGHTS" | "QUERY_VOCABULARY",
+  query: DataQuery,
+  refreshRevision: number,
+): QueryResult<T> {
+  const [result, setResult] = useState<QueryResult<T>>({ items: [], total: 0 });
+  const queryKey = JSON.stringify(query);
 
   useEffect(() => {
-    if (page !== safePage) setPage(safePage);
-  }, [page, safePage]);
+    let isCurrent = true;
+    void sendMessage<QueryResult<T>>({ type, query }).then((next) => {
+      if (isCurrent) setResult(next);
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [queryKey, refreshRevision, type]);
 
-  return {
-    page: safePage,
-    pageItems: items.slice(
-      safePage * recordsPageSize,
-      safePage * recordsPageSize + recordsPageSize,
-    ),
-    setPage,
-  };
+  return result;
+}
+
+function useValidServerPage(
+  page: number,
+  total: number,
+  recordsPageSize: RecordsPageSize,
+  setPage: (page: number) => void,
+): void {
+  const lastPage = Math.max(0, Math.ceil(total / recordsPageSize) - 1);
+  useEffect(() => {
+    if (page > lastPage) setPage(lastPage);
+  }, [lastPage, page, setPage]);
 }
 
 function EmptyTableRow({
@@ -1842,11 +3086,36 @@ function EmptyTableRow({
   return (
     <TableRow>
       <TableCell colSpan={colSpan} align="center" sx={{ py: 6 }}>
-        <Typography color="text.secondary" variant="body2">
-          {message}
-        </Typography>
+        <Stack alignItems="center" spacing={1.5}>
+          <Typography color="text.secondary" variant="body2">
+            {message}
+          </Typography>
+          <Button variant="outlined" size="small" onClick={openRandomArticle}>
+            {getEmptyStateCta(detectBrowserLanguage())}
+          </Button>
+        </Stack>
       </TableCell>
     </TableRow>
+  );
+}
+
+function getEmptyStateCta(language: AppSettings["ui"]["language"]): string {
+  return {
+    "zh-CN": "去阅读一篇文章",
+    "zh-TW": "去閱讀一篇文章",
+    en: "Read an article",
+    es: "Leer un artículo",
+  }[language];
+}
+
+function openRandomArticle(): void {
+  const language = detectBrowserLanguage();
+  const subdomain =
+    language === "zh-CN" || language === "zh-TW" ? "zh" : language;
+  window.open(
+    `https://${subdomain}.wikipedia.org/wiki/Special:Random`,
+    "_blank",
+    "noopener,noreferrer",
   );
 }
 
@@ -1878,6 +3147,19 @@ function RecordsTablePagination({
 function AboutTab({ t }: { t: Messages }) {
   const releases = [
     {
+      version: t.options.about.releases.v1_2.version,
+      summary: t.options.about.releases.v1_2.summary,
+      features: [
+        t.options.about.releases.v1_2.feature1,
+        t.options.about.releases.v1_2.feature2,
+        t.options.about.releases.v1_2.feature3,
+        t.options.about.releases.v1_2.feature4,
+        t.options.about.releases.v1_2.feature5,
+        t.options.about.releases.v1_2.feature6,
+        t.options.about.releases.v1_2.feature7,
+      ],
+    },
+    {
       version: t.options.about.releases.v1_1.version,
       summary: t.options.about.releases.v1_1.summary,
       features: [
@@ -1900,21 +3182,6 @@ function AboutTab({ t }: { t: Messages }) {
 
   return (
     <Stack spacing={3} maxWidth={860}>
-      <Box>
-        <Typography variant="h6" gutterBottom>
-          {t.options.about.plan.title}
-        </Typography>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ maxWidth: 720 }}
-        >
-          {t.options.about.plan.body}
-        </Typography>
-      </Box>
-
-      <Divider />
-
       <Box>
         <Typography variant="h6" gutterBottom>
           {t.options.about.releases.title}
@@ -2119,7 +3386,8 @@ function ConfirmPopover({
 }
 
 function SettingsTab({
-  data,
+  settingsValue,
+  getFullSnapshot,
   includeSensitive,
   setIncludeSensitive,
   runAction,
@@ -2127,7 +3395,8 @@ function SettingsTab({
   onChange,
   t,
 }: {
-  data: ListAllDataResult;
+  settingsValue: AppSettings;
+  getFullSnapshot: () => Promise<ListAllDataResult>;
   includeSensitive: boolean;
   setIncludeSensitive: (value: boolean) => void;
   runAction: RunAction;
@@ -2135,12 +3404,18 @@ function SettingsTab({
   onChange: () => Promise<void>;
   t: Messages;
 }) {
-  const [settings, setSettings] = useState<AppSettings>(data.settings);
+  const [settings, setSettings] = useState<AppSettings>(settingsValue);
   const [globalEnabled, setGlobalEnabled] = useState(true);
   const [disabledSitesText, setDisabledSitesText] = useState("");
   const [promptTemplateError, setPromptTemplateError] = useState("");
+  const [promptTemplateType, setPromptTemplateType] =
+    useState<PromptTemplateType>("lookup");
+  const [isTestingLlm, setIsTestingLlm] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(
+    window.location.hash.includes("onboarding=1"),
+  );
 
-  useEffect(() => setSettings(data.settings), [data.settings]);
+  useEffect(() => setSettings(settingsValue), [settingsValue]);
   useEffect(() => {
     chrome.storage.local
       .get(["globalEnabled", "disabledSites"])
@@ -2155,16 +3430,22 @@ function SettingsTab({
   }, []);
 
   async function saveSettings() {
-    const missingVariables = getMissingPromptVariables(
-      settings.llm.promptTemplate,
-    );
-    if (missingVariables.length > 0) {
+    const invalidPromptTemplate = (
+      [
+        ["lookup", settings.llm.lookupPromptTemplate],
+        ["translation", settings.llm.translationPromptTemplate],
+      ] as const
+    ).find(([, template]) => getMissingPromptVariables(template).length > 0);
+    if (invalidPromptTemplate) {
+      const [type, template] = invalidPromptTemplate;
+      const missingVariables = getMissingPromptVariables(template);
       const message = interpolate(
         t.options.errors.promptTemplateMissingVariables,
         {
           variables: missingVariables.join(", "),
         },
       );
+      setPromptTemplateType(type);
       setPromptTemplateError(message);
       notify(message, "error");
       return;
@@ -2196,17 +3477,25 @@ function SettingsTab({
   }
 
   function updateLanguage(language: AppSettings["ui"]["language"]) {
-    const shouldUpdatePromptTemplate = isDefaultPromptTemplate(
-      settings.llm.promptTemplate,
+    const shouldUpdateLookupPrompt = isDefaultPromptTemplate(
+      "lookup",
+      settings.llm.lookupPromptTemplate,
+    );
+    const shouldUpdateTranslationPrompt = isDefaultPromptTemplate(
+      "translation",
+      settings.llm.translationPromptTemplate,
     );
     setSettings({
       ...settings,
-      llm: shouldUpdatePromptTemplate
-        ? {
-            ...settings.llm,
-            promptTemplate: getDefaultPromptTemplate(language),
-          }
-        : settings.llm,
+      llm: {
+        ...settings.llm,
+        lookupPromptTemplate: shouldUpdateLookupPrompt
+          ? getDefaultPromptTemplate("lookup", language)
+          : settings.llm.lookupPromptTemplate,
+        translationPromptTemplate: shouldUpdateTranslationPrompt
+          ? getDefaultPromptTemplate("translation", language)
+          : settings.llm.translationPromptTemplate,
+      },
       ui: { ...settings.ui, language },
     });
   }
@@ -2245,14 +3534,59 @@ function SettingsTab({
 
   function restoreDefaultPromptTemplate() {
     setPromptTemplateError("");
+    const promptTemplateKey =
+      promptTemplateType === "lookup"
+        ? "lookupPromptTemplate"
+        : "translationPromptTemplate";
     setSettings({
       ...settings,
       llm: {
         ...settings.llm,
-        promptTemplate: getDefaultPromptTemplate(settings.ui.language),
+        [promptTemplateKey]: getDefaultPromptTemplate(
+          promptTemplateType,
+          settings.ui.language,
+        ),
       },
     });
     notify(t.options.notices.promptRestored);
+  }
+
+  async function testLlmConnection() {
+    const llm = getEffectiveLlmConfig(settings.llm);
+    const missingFields = [
+      [llm.baseUrl, t.options.settings.baseUrl],
+      [llm.apiKey, t.options.settings.apiKey],
+      [llm.model, t.options.settings.model],
+    ]
+      .filter(([value]) => !value.trim())
+      .map(([, label]) => label);
+
+    if (missingFields.length > 0) {
+      notify(
+        interpolate(t.options.errors.llmConfigRequired, {
+          fields: missingFields.join(", "),
+        }),
+        "error",
+        LLM_TEST_ERROR_TOAST_DURATION_MS,
+      );
+      return;
+    }
+
+    setIsTestingLlm(true);
+    try {
+      await sendMessage({ type: "TEST_LLM_CONNECTION", settings });
+      notify(t.options.notices.llmConnectionSucceeded);
+    } catch (error) {
+      notify(
+        interpolate(t.options.errors.llmConnectionFailed, {
+          reason: formatError(error),
+        }),
+        "error",
+        LLM_TEST_ERROR_TOAST_DURATION_MS,
+      );
+    } finally {
+      setIsTestingLlm(false);
+    }
   }
 
   const activeLlmProviderPreset = getLlmProviderPreset(settings.llm.provider);
@@ -2261,9 +3595,47 @@ function SettingsTab({
     settings.llm.providers[settings.llm.provider],
   );
   const isCustomLlmProvider = settings.llm.provider === "custom";
+  const promptTemplateKey =
+    promptTemplateType === "lookup"
+      ? "lookupPromptTemplate"
+      : "translationPromptTemplate";
+  const activePromptTemplate = settings.llm[promptTemplateKey];
 
   return (
     <Stack spacing={3} maxWidth={760}>
+      {showOnboarding && (
+        <Paper
+          variant="outlined"
+          sx={{
+            position: "relative",
+            p: 2.25,
+            bgcolor: "#eff6ff",
+            borderColor: "#93c5fd",
+          }}
+        >
+          <Stack sx={{ pr: 4 }}>
+            <Box>
+              <Typography variant="h6">
+                {getOnboardingCopy(settings.ui.language).title}
+              </Typography>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.75 }}
+              >
+                {getOnboardingCopy(settings.ui.language).body}
+              </Typography>
+            </Box>
+          </Stack>
+          <IconButton
+            aria-label={t.common.cancel}
+            onClick={() => setShowOnboarding(false)}
+            sx={{ position: "absolute", top: "10px", right: "10px" }}
+          >
+            <X size={18} />
+          </IconButton>
+        </Paper>
+      )}
       <Typography variant="h6">{t.options.settings.language}</Typography>
       <TextField
         select
@@ -2282,11 +3654,71 @@ function SettingsTab({
       </TextField>
 
       <Box>
-        <Typography variant="h6">{t.options.settings.llm}</Typography>
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          spacing={2}
+        >
+          <Typography variant="h6">{t.options.settings.llm}</Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<FlaskConical size={12} />}
+            disabled={isTestingLlm}
+            onClick={() => void testLlmConnection()}
+          >
+            {isTestingLlm ? t.options.actions.testing : t.options.actions.test}
+          </Button>
+        </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
           {t.options.settings.llmCostNotice}
         </Typography>
       </Box>
+      {showOnboarding && (
+        <Paper
+          variant="outlined"
+          sx={{
+            position: "relative",
+            isolation: "isolate",
+            overflow: "hidden",
+            px: 2,
+            py: 1.5,
+            bgcolor: "#dbeafe",
+            borderColor: "#60a5fa",
+            boxShadow: "0 8px 24px rgba(37, 99, 235, 0.16)",
+            color: "#1e3a8a",
+            "&::after": {
+              position: "absolute",
+              zIndex: 0,
+              top: "-100%",
+              bottom: "-100%",
+              left: 0,
+              width: "24%",
+              content: '\"\"',
+              background:
+                "linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent)",
+              animation: `${llmOnboardingShimmer} 2.8s ease-in-out infinite`,
+              pointerEvents: "none",
+            },
+            "@media (prefers-reduced-motion: reduce)": {
+              "&::after": { display: "none" },
+            },
+          }}
+        >
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1}
+            sx={{ position: "relative", zIndex: 1 }}
+          >
+            <Info size={18} aria-hidden="true" />
+            <Typography variant="body2" fontWeight={700}>
+              {t.options.settings.llmOnboardingNotice}
+            </Typography>
+          </Stack>
+        </Paper>
+      )}
       <TextField
         select
         label={t.options.settings.provider}
@@ -2379,15 +3811,48 @@ function SettingsTab({
           }
         />
       </Stack>
-      <Stack spacing={0.75}>
+      <Stack spacing={0}>
+        <Box sx={{ mb: "20px" }}>
+          <Tabs
+            value={promptTemplateType}
+            onChange={(_event, value: PromptTemplateType) => {
+              setPromptTemplateType(value);
+              setPromptTemplateError("");
+            }}
+            aria-label={t.options.settings.promptTemplateType}
+            sx={{
+              minHeight: 34,
+              borderBottom: "1px solid #e2e8f0",
+              "& .MuiTab-root": {
+                minWidth: 72,
+                minHeight: 34,
+                px: 1.5,
+                py: 0.5,
+                fontSize: "0.8rem",
+              },
+            }}
+          >
+            <Tab
+              value="lookup"
+              label={t.options.settings.promptTemplateTypes.lookup}
+            />
+            <Tab
+              value="translation"
+              label={t.options.settings.promptTemplateTypes.translation}
+            />
+          </Tabs>
+        </Box>
         <TextField
           label={t.options.settings.promptTemplate}
-          value={settings.llm.promptTemplate}
+          value={activePromptTemplate}
           onChange={(event) => {
             setPromptTemplateError("");
             setSettings({
               ...settings,
-              llm: { ...settings.llm, promptTemplate: event.target.value },
+              llm: {
+                ...settings.llm,
+                [promptTemplateKey]: event.target.value,
+              },
             });
           }}
           multiline
@@ -2396,6 +3861,7 @@ function SettingsTab({
         />
         <Box
           sx={{
+            pt: 0.75,
             alignItems: "flex-start",
             display: "flex",
             gap: 1,
@@ -2509,24 +3975,55 @@ function SettingsTab({
         <Button
           startIcon={<Download size={16} />}
           onClick={() =>
-            void runAction(
-              () =>
-                downloadFile(
-                  "remarker-backup.json",
-                  createBackupJson({
-                    settings: data.settings,
-                    footprints: data.footprints,
-                    highlights: data.highlights,
-                    vocabulary: data.vocabulary,
-                    includeSensitive,
-                  }),
-                  "application/json",
-                ),
-              t.options.notices.jsonExported,
-            )
+            void runAction(async () => {
+              const data = await getFullSnapshot();
+              downloadFile(
+                "remarker-backup.json",
+                createBackupJson({
+                  settings: data.settings,
+                  footprints: data.footprints,
+                  highlights: data.highlights,
+                  vocabulary: data.vocabulary,
+                  includeSensitive,
+                }),
+                "application/json",
+              );
+            }, t.options.notices.jsonExported)
           }
         >
           {t.options.actions.exportJson}
+        </Button>
+        <Button
+          startIcon={<Download size={16} />}
+          onClick={() =>
+            void runAction(async () => {
+              const data = await getFullSnapshot();
+              const exportedAt = new Date().toISOString();
+              downloadFile(
+                "remarker-incremental.json",
+                createIncrementalBackupJson({
+                  settings: data.settings,
+                  footprints: data.footprints,
+                  highlights: data.highlights,
+                  vocabulary: data.vocabulary,
+                  since: data.settings.export.lastIncrementalExportAt,
+                  exportedAt,
+                  includeSensitive,
+                }),
+                "application/json",
+              );
+              await sendMessage({
+                type: "SAVE_SETTINGS",
+                settings: {
+                  ...data.settings,
+                  export: { lastIncrementalExportAt: exportedAt },
+                },
+              });
+              await onChange();
+            }, t.options.notices.jsonExported)
+          }
+        >
+          Incremental JSON
         </Button>
         <Button startIcon={<Upload size={16} />} component="label">
           {t.options.actions.importJson}
@@ -2648,19 +4145,25 @@ function formatError(error: unknown): string {
   return error instanceof Error ? error.message : "Operation failed.";
 }
 
-async function speakWord(word: string): Promise<void> {
+async function speakWord(
+  word: string,
+  language: AppSettings["ui"]["language"] = "en",
+): Promise<void> {
   const response = await sendMessage<PronunciationResult>({
     type: "GET_PRONUNCIATION",
     word,
+    language,
   });
 
-  if (response.audioUrl) {
-    await new Audio(response.audioUrl).play();
+  if (response.audioDataUrl || response.audioUrl) {
+    await new Audio(response.audioDataUrl ?? response.audioUrl).play();
     return;
   }
 
   speechSynthesis.cancel();
-  speechSynthesis.speak(new SpeechSynthesisUtterance(word));
+  const utterance = new SpeechSynthesisUtterance(word);
+  utterance.lang = response.language;
+  speechSynthesis.speak(utterance);
 }
 
 function sendMessage<T>(message: RuntimeMessage): Promise<T> {

@@ -23,6 +23,8 @@ export const zhCN: Messages = {
     addFootprint: "加入足迹",
     addedFootprint: "已加入足迹",
     managePage: "打开管理页面",
+    reviewDue: "有 {{count}} 个词待复习",
+    openReview: "进入复习界面",
   },
   content: {
     copy: "复制",
@@ -61,6 +63,21 @@ export const zhCN: Messages = {
       collapse: "折叠",
       expand: "展开",
     },
+    activity: {
+      title: "最近 6 个月学习活动",
+      less: "少",
+      more: "多",
+      reviewTitle: "今日复习",
+      reviewProgress: "已完成 {{completed}} 个 · 共需复习 {{total}} 个",
+      startReview: "开始复习",
+      reviewCompleted: "🎉 已完成 ✨",
+      reviewEmpty:
+        "请在阅读外文页面时使用 ReMarker 查词，查词结果将自动保存为生词并提示复习。",
+      daySummary: "{{date}}：共 {{total}} 项",
+      highlightSummary: "{{count}} 条划线",
+      vocabularySummary: "{{count}} 个生词",
+      translationSummary: "{{count}} 条翻译",
+    },
     columns: {
       pageTitle: "页面标题",
       site: "站点",
@@ -76,6 +93,8 @@ export const zhCN: Messages = {
       original: "原文",
       context: "上下文",
       audio: "发音",
+      note: "笔记",
+      hasNoteSuffix: "， 有笔记",
     },
     filters: {
       allColors: "全部颜色",
@@ -87,6 +106,7 @@ export const zhCN: Messages = {
       highlights: "暂无划线数据。",
       vocabulary: "暂无生词数据。",
       translations: "暂无翻译数据。",
+      note: "暂无笔记",
     },
     actions: {
       starFootprint: "星标足迹",
@@ -94,6 +114,11 @@ export const zhCN: Messages = {
       archiveFootprint: "归档足迹",
       copyHighlightedText: "复制划线文本",
       deleteHighlight: "删除划线",
+      expandHighlight: "展开划线",
+      collapseHighlight: "折叠划线",
+      addHighlightNote: "添加笔记",
+      editHighlightNote: "编辑笔记",
+      saveHighlightNote: "保存笔记",
       expandTranslation: "展开解释",
       collapseTranslation: "折叠解释",
       speakWord: "播放 {{word}} 发音",
@@ -106,6 +131,8 @@ export const zhCN: Messages = {
       importJson: "导入 JSON",
       saveSettings: "保存设置",
       restoreDefault: "恢复默认",
+      test: "测试",
+      testing: "测试中…",
     },
     confirmations: {
       archiveFootprint: "归档这条足迹？归档后将不再显示在当前列表中。",
@@ -117,6 +144,7 @@ export const zhCN: Messages = {
       llm: "大模型",
       llmCostNotice:
         "注意：调用大模型翻译或查词有可能产生费用，由所选择的模型厂商决定和收取，请妥善配置并保存 Key 信息。",
+      llmOnboardingNotice: "查词和翻译功能需要 LLM 支持，请先配置",
       provider: "模型厂商",
       providerHelp:
         "翻译本身的成本消耗较低，推荐以接口返回速度为第一考量因素。",
@@ -141,7 +169,12 @@ export const zhCN: Messages = {
       temperature: "Temperature",
       timeoutMs: "超时时间 ms",
       promptTemplate: "提示词模板",
-      promptTemplateHelp: "可用变量：{{task}}、{{selection}}、{{context}}",
+      promptTemplateType: "提示词类型",
+      promptTemplateTypes: {
+        lookup: "查词",
+        translation: "翻译",
+      },
+      promptTemplateHelp: "可用变量：{{selection}}、{{context}}",
       behavior: "行为",
       autoCloseLookupPanelOnCopy: "查词弹窗复制后自动关闭",
       language: "语言",
@@ -166,6 +199,7 @@ export const zhCN: Messages = {
       footprintUnstarred: "已取消星标。",
       footprintArchived: "足迹已归档。",
       highlightDeleted: "划线已删除。",
+      highlightNoteSaved: "划线笔记已保存。",
       vocabularyDeleted: "生词已删除。",
       translationDeleted: "翻译已删除。",
       copied: "已复制。",
@@ -173,9 +207,12 @@ export const zhCN: Messages = {
       markdownExported: "Markdown 已导出。",
       promptRestored: "已恢复默认提示词。",
       pronunciationStarted: "已开始播放发音。",
+      llmConnectionSucceeded: "LLM 连接测试成功。",
     },
     errors: {
       promptTemplateMissingVariables: "提示词模板缺少必需变量：{{variables}}",
+      llmConfigRequired: "必须填写：{{fields}}。",
+      llmConnectionFailed: "LLM 连接测试失败：{{reason}}",
     },
     statusDescriptions: {
       active: "这条划线已在来源页面恢复。",
@@ -190,12 +227,19 @@ export const zhCN: Messages = {
       untitled: "未命名",
     },
     about: {
-      plan: {
-        title: "Plan",
-        body: "后续计划增加基于遗忘曲线的生词复习计划，让临时查词沉淀为可持续复习的长期记忆，并支持数据在不同设备之间同步。",
-      },
       releases: {
         title: "Releases",
+        v1_2: {
+          version: "1.2.0",
+          summary: "新增生词复习功能，划线笔记功能及大量细节优化。",
+          feature1: "新增生词遗忘曲线复习功能。",
+          feature2: "划线新增笔记功能。",
+          feature3: "足迹页面新增“学习活动图”展示。",
+          feature4: "数据导出增加 Obsidian 和 Notion 格式区分。",
+          feature5: "解决划线部分的文本无法同时查词的问题。",
+          feature6: "修正页面划线/选词工具条定位问题。",
+          feature7: "其他样式和功能优化。",
+        },
         v1_1: {
           version: "1.1.0",
           summary: "优化界面样式，并增加访问页面的足迹功能。",

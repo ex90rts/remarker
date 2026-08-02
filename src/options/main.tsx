@@ -33,7 +33,7 @@ const theme = createTheme({
   },
   typography: {
     fontFamily:
-      '"Segoe UI", "PingFang SC", sans-serif',
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"',
     h4: {
       fontSize: "1.5rem",
       fontWeight: 750,

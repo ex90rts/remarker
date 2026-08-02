@@ -4,3 +4,6 @@ cert/
 openwiki/
 .DS_Store
 *.log
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks/

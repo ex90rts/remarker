@@ -9,7 +9,6 @@ export default defineConfig({
       input: {
         options: "options.html",
         popup: "popup.html",
-        content: "src/content/index.ts",
         "service-worker": "src/background/service-worker.ts"
       },
       output: {

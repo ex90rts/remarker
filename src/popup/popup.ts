@@ -1,5 +1,6 @@
 import "./popup.css";
 import { detectBrowserLanguage, getMessages } from "../shared/i18n";
+import { interpolate } from "../shared/i18n";
 import type { Messages, SupportedLanguage } from "../shared/i18n";
 import type { AppSettings } from "../shared/types";
 
@@ -11,6 +12,7 @@ const autoCloseLookupPanelOnCopyInput = document.querySelector<HTMLInputElement>
 const statusText = document.querySelector<HTMLElement>("#statusText");
 const addFootprintButton = document.querySelector<HTMLButtonElement>("#addFootprint");
 const openOptionsButton = document.querySelector<HTMLButtonElement>("#openOptions");
+const openReviewButton = document.querySelector<HTMLButtonElement>("#openReview");
 const globalEnabledLabel = document.querySelector<HTMLElement>("#globalEnabledLabel");
 const siteEnabledLabel = document.querySelector<HTMLElement>("#siteEnabledLabel");
 const autoCloseLookupPanelOnCopyLabel = document.querySelector<HTMLElement>(
@@ -43,6 +45,17 @@ async function init(): Promise<void> {
   globalEnabled = cache.globalEnabled ?? true;
   disabledSites = Array.isArray(cache.disabledSites) ? cache.disabledSites : [];
   footprintAdded = await checkFootprintAdded();
+  const reviewStatus = await chrome.runtime
+    .sendMessage({ type: "GET_REVIEW_STATUS", now: new Date().toISOString() })
+    .then((response: { ok: boolean; result?: { dueCount: number } }) => response.result)
+    .catch(() => undefined);
+  const dueCount = reviewStatus?.dueCount ?? 0;
+  if (openReviewButton) {
+    openReviewButton.hidden = dueCount === 0;
+    openReviewButton.textContent = dueCount
+      ? `${interpolate(t.popup.reviewDue, { count: dueCount })} · ${t.popup.openReview}`
+      : t.popup.openReview;
+  }
 
   if (globalEnabledInput) globalEnabledInput.checked = globalEnabled;
   if (siteEnabledInput) {
@@ -92,6 +105,12 @@ async function init(): Promise<void> {
 
   openOptionsButton?.addEventListener("click", () => {
     chrome.runtime.openOptionsPage();
+  });
+
+  openReviewButton?.addEventListener("click", () => {
+    void chrome.tabs.create({
+      url: chrome.runtime.getURL("options.html#vocabulary-review"),
+    });
   });
 
   addFootprintButton?.addEventListener("click", async () => {
