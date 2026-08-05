@@ -14,6 +14,8 @@ ReMarker 是一个本地优先的 Chrome 浏览器扩展，面向网页深度阅
   <img src="https://ex90rts.github.io/remarker/assets/images/screenshot-04.webp" alt="ReMarker 管理页面" width="80%" style="border: 1px solid #ddd; padding: 4px; display: inline-block; border-radius: 4px;">
 </div>
 
+**通过 Chrome Web Store 安装s**: https://chromewebstore.google.com/detail/remarker/hdmpdmamklhjagiogicgcfcdpfiilecn
+
 ## 功能
 
 - 阅读工具栏：支持复制或使用 Google 搜索选中内容；对词语发音、查词；对长文本翻译或使用五种颜色划线。

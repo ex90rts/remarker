@@ -14,6 +14,8 @@ ReMarker is a local-first Chrome extension for focused web reading and language 
   <img src="https://ex90rts.github.io/remarker/assets/images/screenshot-04.webp" alt="ReMarker management page" width="80%" style="border: 1px solid #ddd; padding: 4px; display: inline-block; border-radius: 4px;">
 </div>
 
+**Install it via the Chrome Web Store**: https://chromewebstore.google.com/detail/remarker/hdmpdmamklhjagiogicgcfcdpfiilecn
+
 ## Features
 
 - Reading toolbar: copy or Google-search any selection; pronounce and explain words; translate or highlight longer text in five colors.
