@@ -4,6 +4,10 @@
 
 ReMarker 是一个本地优先的 Chrome 浏览器扩展，面向网页深度阅读和外语学习。选中文本后可以复制、搜索、发音、查词、翻译或划线，并统一管理由此产生的划线、笔记、生词、翻译和页面足迹。
 
+<div align="center">安装到浏览器 <a href="https://chromewebstore.google.com/detail/remarker/hdmpdmamklhjagiogicgcfcdpfiilecn" target="_blank">Chrome Web Store</a></div>
+
+<br />
+
 <div align="center">
   <img src="https://ex90rts.github.io/remarker/assets/images/screenshot-01.webp" alt="ReMarker 网页阅读工具" width="80%" style="border: 1px solid #ddd; padding: 4px; display: inline-block; border-radius: 4px;">
 </div>
@@ -13,8 +17,6 @@ ReMarker 是一个本地优先的 Chrome 浏览器扩展，面向网页深度阅
 <div align="center">
   <img src="https://ex90rts.github.io/remarker/assets/images/screenshot-04.webp" alt="ReMarker 管理页面" width="80%" style="border: 1px solid #ddd; padding: 4px; display: inline-block; border-radius: 4px;">
 </div>
-
-**通过 Chrome Web Store 安装s**: https://chromewebstore.google.com/detail/remarker/hdmpdmamklhjagiogicgcfcdpfiilecn
 
 ## 功能
 

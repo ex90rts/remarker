@@ -4,6 +4,10 @@
 
 ReMarker is a local-first Chrome extension for focused web reading and language learning. Select text to copy, search, pronounce, explain, translate, or highlight it; ReMarker keeps the resulting highlights, notes, vocabulary, translations, and page footprints organized for later review.
 
+<div align="center">Install from <a href="https://chromewebstore.google.com/detail/remarker/hdmpdmamklhjagiogicgcfcdpfiilecn" target="_blank">Chrome Web Store</a></div>
+
+<br />
+
 <div align="center">
   <img src="https://ex90rts.github.io/remarker/assets/images/screenshot-01.webp" alt="ReMarker reading tools" width="80%" style="border: 1px solid #ddd; padding: 4px; display: inline-block; border-radius: 4px;">
 </div>
@@ -13,8 +17,6 @@ ReMarker is a local-first Chrome extension for focused web reading and language 
 <div align="center">
   <img src="https://ex90rts.github.io/remarker/assets/images/screenshot-04.webp" alt="ReMarker management page" width="80%" style="border: 1px solid #ddd; padding: 4px; display: inline-block; border-radius: 4px;">
 </div>
-
-**Install it via the Chrome Web Store**: https://chromewebstore.google.com/detail/remarker/hdmpdmamklhjagiogicgcfcdpfiilecn
 
 ## Features
 
