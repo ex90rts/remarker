@@ -130,6 +130,7 @@ export interface VocabularyRecord {
   reviewIntervalDays: number;
   nextReviewAt: string;
   lastReviewAt?: string;
+  reviewHistory?: string[];
   createdAt: string;
   updatedAt: string;
 }

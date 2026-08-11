@@ -77,6 +77,7 @@ export const es: Messages = {
       highlightSummary: "{{count}} resaltados",
       vocabularySummary: "{{count}} palabras",
       translationSummary: "{{count}} traducciones",
+      reviewSummary: "{{count}} repasos de vocabulario",
     },
     columns: {
       pageTitle: "Título de la página",
@@ -125,6 +126,8 @@ export const es: Messages = {
       deleteVocabularyItem: "Eliminar elemento de vocabulario",
       deleteTranslation: "Eliminar traducción",
       copyExplanation: "Copiar explicación",
+      editExplanation: "Editar explicación",
+      saveExplanation: "Guardar explicación",
       export: "Exportar",
       exportJson: "Exportar JSON",
       exportMarkdown: "Exportar Markdown",
@@ -212,6 +215,7 @@ export const es: Messages = {
       highlightNoteSaved: "Nota del resaltado guardada.",
       vocabularyDeleted: "Elemento de vocabulario eliminado.",
       translationDeleted: "Traducción eliminada.",
+      explanationSaved: "Explicación guardada.",
       copied: "Copiado.",
       jsonExported: "JSON exportado.",
       markdownExported: "Markdown exportado.",
@@ -243,6 +247,16 @@ export const es: Messages = {
     about: {
       releases: {
         title: "Releases",
+        v1_2_1: {
+          version: "1.2.1",
+          summary: "Correcciones de problemas conocidos y pequeñas mejoras.",
+          feature1:
+            "Incluye los repasos de vocabulario en la actividad de aprendizaje.",
+          feature2:
+            "Permite editar manualmente las explicaciones de Vocabulario y Traducciones.",
+          feature3:
+            "Mejora el formato de almacenamiento del contenido de contexto.",
+        },
         v1_2: {
           version: "1.2.0",
           summary:

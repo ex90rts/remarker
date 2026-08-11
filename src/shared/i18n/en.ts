@@ -75,6 +75,7 @@ export const en = {
       highlightSummary: "{{count}} highlights",
       vocabularySummary: "{{count}} words",
       translationSummary: "{{count}} translations",
+      reviewSummary: "{{count}} vocabulary reviews",
     },
     columns: {
       pageTitle: "Page Title",
@@ -123,6 +124,8 @@ export const en = {
       deleteVocabularyItem: "Delete vocabulary item",
       deleteTranslation: "Delete translation",
       copyExplanation: "Copy explanation",
+      editExplanation: "Edit explanation",
+      saveExplanation: "Save explanation",
       export: "Export",
       exportJson: "Export JSON",
       exportMarkdown: "Export Markdown",
@@ -208,6 +211,7 @@ export const en = {
       highlightNoteSaved: "Highlight note saved.",
       vocabularyDeleted: "Vocabulary item deleted.",
       translationDeleted: "Translation deleted.",
+      explanationSaved: "Explanation saved.",
       copied: "Copied.",
       jsonExported: "JSON exported.",
       markdownExported: "Markdown exported.",
@@ -237,6 +241,14 @@ export const en = {
     about: {
       releases: {
         title: "Releases",
+        v1_2_1: {
+          version: "1.2.1",
+          summary: "Known issue fixes and minor improvements.",
+          feature1: "Counts vocabulary reviews toward learning activity.",
+          feature2:
+            "Allows explanations in Vocabulary and Translations to be edited manually.",
+          feature3: "Improves the storage format of context content.",
+        },
         v1_2: {
           version: "1.2.0",
           summary:

@@ -77,6 +77,7 @@ export const zhTW: Messages = {
       highlightSummary: "{{count}} 條標記",
       vocabularySummary: "{{count}} 個生詞",
       translationSummary: "{{count}} 條翻譯",
+      reviewSummary: "複習生字：{{count}} 個",
     },
     columns: {
       pageTitle: "頁面標題",
@@ -125,6 +126,8 @@ export const zhTW: Messages = {
       deleteVocabularyItem: "刪除生字",
       deleteTranslation: "刪除翻譯",
       copyExplanation: "複製解釋",
+      editExplanation: "編輯解釋",
+      saveExplanation: "儲存解釋",
       export: "匯出",
       exportJson: "匯出 JSON",
       exportMarkdown: "匯出 Markdown",
@@ -202,6 +205,7 @@ export const zhTW: Messages = {
       highlightNoteSaved: "標記筆記已儲存。",
       vocabularyDeleted: "生字已刪除。",
       translationDeleted: "翻譯已刪除。",
+      explanationSaved: "解釋已儲存。",
       copied: "已複製。",
       jsonExported: "JSON 已匯出。",
       markdownExported: "Markdown 已匯出。",
@@ -229,6 +233,13 @@ export const zhTW: Messages = {
     about: {
       releases: {
         title: "Releases",
+        v1_2_1: {
+          version: "1.2.1",
+          summary: "已知問題修正與小幅優化。",
+          feature1: "將生字複習計入學習活動。",
+          feature2: "生字表和翻譯中的解釋內容支援手動修改。",
+          feature3: "優化上下文內容的儲存格式。",
+        },
         v1_2: {
           version: "1.2.0",
           summary: "新增生字複習、標記筆記功能及大量細節優化。",

@@ -26,6 +26,7 @@ export type RuntimeMessage =
     }
   | { type: "DELETE_HIGHLIGHT"; id: string }
   | { type: "SAVE_VOCABULARY"; record: VocabularyRecord }
+  | { type: "UPDATE_VOCABULARY_TRANSLATION"; id: string; translation: string }
   | { type: "DELETE_VOCABULARY"; id: string }
   | { type: "GET_REVIEW_QUEUE"; now: string; limit?: number }
   | { type: "GET_REVIEW_STATUS"; now: string }

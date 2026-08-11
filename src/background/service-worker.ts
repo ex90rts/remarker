@@ -7,6 +7,7 @@ import {
   type LlmStreamEvent,
 } from "../shared/llm-stream";
 import { stripOuterCodeFence } from "../shared/markdown";
+import { normalizeContextForStorage } from "../shared/context";
 import { getHostname, normalizeUrlKey } from "../shared/url";
 import {
   deleteFromStore,
@@ -33,6 +34,7 @@ import {
   queryVocabulary,
   submitVocabularyReview,
   updateHighlightStatuses,
+  updateVocabularyTranslation,
 } from "../shared/repositories/db";
 import type {
   AppSettings,
@@ -209,13 +211,19 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
       return { id: message.id };
 
     case "SAVE_VOCABULARY":
-      message.record = normalizeVocabularyReview(message.record);
+      message.record = normalizeVocabularyReview({
+        ...message.record,
+        contextSentence: normalizeContextForStorage(message.record.contextSentence),
+      });
       await Promise.all([
         putInStore("vocabulary", message.record),
         ensureFootprintRecord(message.record.sourceUrl, message.record.sourceTitle),
       ]);
       await refreshReviewBadge();
       return message.record;
+
+    case "UPDATE_VOCABULARY_TRANSLATION":
+      return updateVocabularyTranslation(message.id, message.translation);
 
     case "SET_FOOTPRINT_STAR":
       return updateFootprintStar(message.urlKey, message.starred);
@@ -393,9 +401,10 @@ async function explainSelection(
     input.selectionKind,
   );
   const urlKey = safeNormalizeUrlKey(input.sourceUrl);
+  const context = normalizeContextForStorage(input.context);
   const { cacheKey, contextHash } = await createLookupCacheKey({
     selectedText: input.selectedText,
-    context: input.context,
+    context,
     sourceKey: urlKey,
     model: modelIdentity,
     selectionKind: input.selectionKind,
@@ -411,6 +420,7 @@ async function explainSelection(
       urlKey,
       sourceUrl: input.sourceUrl,
       sourceTitle: input.sourceTitle,
+      contextSentence: context,
       anchor: input.anchor ?? cached.anchor,
       translation: sanitizedResult,
       updatedAt: new Date().toISOString(),
@@ -434,7 +444,7 @@ async function explainSelection(
     promptTemplate,
     targetLanguage,
     selectedText: input.selectedText,
-    context: input.context,
+    context,
     signal: stream?.signal,
     onChunk: stream?.onChunk,
   });
@@ -449,7 +459,7 @@ async function explainSelection(
     urlKey,
     sourceUrl: input.sourceUrl,
     sourceTitle: input.sourceTitle,
-    contextSentence: input.context,
+    contextSentence: context,
     anchor: input.anchor,
     translation: result,
     cacheKey,

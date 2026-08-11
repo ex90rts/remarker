@@ -1,5 +1,23 @@
 export const DEFAULT_CONTEXT_CHAR_LIMIT = 500;
 
+const INVISIBLE_LAYOUT_CHARACTERS = /[\u00ad\u200b\u2060\ufeff]/g;
+const NON_BREAKING_SPACES = /[\u00a0\u2007\u202f]/g;
+
+export function normalizeContextForStorage(context: string): string {
+  return context
+    .normalize("NFC")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\u2028/g, "\n")
+    .replace(/\u2029/g, "\n\n")
+    .replace(INVISIBLE_LAYOUT_CHARACTERS, "")
+    .replace(NON_BREAKING_SPACES, " ")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 interface SemanticContextInput {
   text: string;
   selectionStart: number;

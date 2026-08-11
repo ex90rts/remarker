@@ -77,6 +77,7 @@ export const zhCN: Messages = {
       highlightSummary: "{{count}} 条划线",
       vocabularySummary: "{{count}} 个生词",
       translationSummary: "{{count}} 条翻译",
+      reviewSummary: "复习生词：{{count}} 个",
     },
     columns: {
       pageTitle: "页面标题",
@@ -125,6 +126,8 @@ export const zhCN: Messages = {
       deleteVocabularyItem: "删除生词",
       deleteTranslation: "删除翻译",
       copyExplanation: "复制解释",
+      editExplanation: "编辑解释",
+      saveExplanation: "保存解释",
       export: "导出",
       exportJson: "导出 JSON",
       exportMarkdown: "导出 Markdown",
@@ -202,6 +205,7 @@ export const zhCN: Messages = {
       highlightNoteSaved: "划线笔记已保存。",
       vocabularyDeleted: "生词已删除。",
       translationDeleted: "翻译已删除。",
+      explanationSaved: "解释已保存。",
       copied: "已复制。",
       jsonExported: "JSON 已导出。",
       markdownExported: "Markdown 已导出。",
@@ -229,6 +233,13 @@ export const zhCN: Messages = {
     about: {
       releases: {
         title: "Releases",
+        v1_2_1: {
+          version: "1.2.1",
+          summary: "已知问题修正和小优化。",
+          feature1: "将生词复习计入学习活动。",
+          feature2: "生词表和翻译中的解释内容支持手动修改。",
+          feature3: "优化上下文内容的存储格式。",
+        },
         v1_2: {
           version: "1.2.0",
           summary: "新增生词复习功能，划线笔记功能及大量细节优化。",

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createSemanticContext, DEFAULT_CONTEXT_CHAR_LIMIT } from "../context";
+import {
+  createSemanticContext,
+  DEFAULT_CONTEXT_CHAR_LIMIT,
+  normalizeContextForStorage,
+} from "../context";
 
 function selectText(source: string, selectedText: string) {
   const selectionStart = source.indexOf(selectedText);
@@ -52,5 +56,30 @@ describe("createSemanticContext", () => {
 
     expect(context.length).toBeLessThanOrEqual(DEFAULT_CONTEXT_CHAR_LIMIT);
     expect(context).toContain("keyword");
+  });
+});
+
+describe("normalizeContextForStorage", () => {
+  it("collapses whitespace-only lines into one blank line while preserving indentation", () => {
+    const context =
+      "GitNexus precomputes structure.\n\n  \n\n    \nflowchart TB\n    subgraph Traditional\n        direction TB";
+
+    expect(normalizeContextForStorage(context)).toBe(
+      "GitNexus precomputes structure.\n\nflowchart TB\n    subgraph Traditional\n        direction TB",
+    );
+  });
+
+  it("normalizes line endings and common invisible layout characters", () => {
+    expect(
+      normalizeContextForStorage(
+        "\ufeffFirst\u00a0line  \r\n\u200b\r\n\r\nSecond\u2028line\u00ad",
+      ),
+    ).toBe("First line\n\nSecond\nline");
+  });
+
+  it("preserves joiners that can carry meaning in non-Latin scripts", () => {
+    expect(normalizeContextForStorage("a\u200cb\u200dc")).toBe(
+      "a\u200cb\u200dc",
+    );
   });
 });

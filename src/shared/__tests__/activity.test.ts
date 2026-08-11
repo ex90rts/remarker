@@ -3,6 +3,7 @@ import {
   ACTIVITY_LEVEL_COLORS,
   buildDailyActivity,
   getActivityColor,
+  getReviewActivityScore,
   getLocalDateKey,
 } from "../activity";
 import type { HighlightRecord, VocabularyRecord } from "../types";
@@ -58,5 +59,22 @@ describe("daily learning activity", () => {
     );
 
     expect(activity).toEqual({});
+  });
+
+  it("scores review volume in five-word steps while retaining raw counts", () => {
+    const reviewedAt = new Date(2026, 7, 3, 9).toISOString();
+    const vocabulary = [
+      ...Array.from({ length: 18 }, (_, index) => ({
+        createdAt: new Date(2026, 7, 1, 9 + index).toISOString(),
+        selectionKind: "word",
+        reviewHistory: [reviewedAt],
+      })),
+    ] as VocabularyRecord[];
+    const activity = buildDailyActivity([], vocabulary);
+    expect(activity[getLocalDateKey(reviewedAt)!].reviews).toBe(18);
+    expect(activity[getLocalDateKey(reviewedAt)!].total).toBe(4);
+    expect(getReviewActivityScore(0)).toBe(0);
+    expect(getReviewActivityScore(18)).toBe(4);
+    expect(getReviewActivityScore(100)).toBe(10);
   });
 });

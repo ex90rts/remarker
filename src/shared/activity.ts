@@ -12,6 +12,7 @@ export interface DailyActivity {
   highlights: number;
   vocabulary: number;
   translations: number;
+  reviews?: number;
   total: number;
 }
 
@@ -30,6 +31,18 @@ export function buildDailyActivity(
       record.createdAt,
       record.selectionKind === "text" ? "translations" : "vocabulary",
     );
+    const reviewTimes = record.reviewHistory?.length
+      ? record.reviewHistory
+      : record.lastReviewAt
+        ? [record.lastReviewAt]
+        : [];
+    for (const reviewedAt of reviewTimes) {
+      incrementActivity(activity, reviewedAt, "reviews", false);
+    }
+  }
+
+  for (const day of Object.values(activity)) {
+    day.total += getReviewActivityScore(day.reviews ?? 0);
   }
 
   return activity;
@@ -39,7 +52,7 @@ export function getActivityColor(count: number): string {
   if (count <= 0) return ACTIVITY_LEVEL_COLORS[0];
   if (count <= 3) return ACTIVITY_LEVEL_COLORS[1];
   if (count <= 8) return ACTIVITY_LEVEL_COLORS[2];
-  if (count < 16) return ACTIVITY_LEVEL_COLORS[3];
+  if (count <= 15) return ACTIVITY_LEVEL_COLORS[3];
   return ACTIVITY_LEVEL_COLORS[4];
 }
 
@@ -55,7 +68,8 @@ export function getLocalDateKey(value: string | Date): string | undefined {
 function incrementActivity(
   activity: Record<string, DailyActivity>,
   createdAt: string,
-  kind: "highlights" | "vocabulary" | "translations",
+  kind: "highlights" | "vocabulary" | "translations" | "reviews",
+  contributesToTotal = true,
 ): void {
   const dateKey = getLocalDateKey(createdAt);
   if (!dateKey) return;
@@ -65,7 +79,11 @@ function incrementActivity(
     translations: 0,
     total: 0,
   };
-  day[kind] += 1;
-  day.total += 1;
+  day[kind] = (day[kind] ?? 0) + 1;
+  if (contributesToTotal) day.total += 1;
   activity[dateKey] = day;
+}
+
+export function getReviewActivityScore(reviewCount: number): number {
+  return Math.min(10, Math.max(0, Math.ceil(Math.max(0, reviewCount) / 5)));
 }

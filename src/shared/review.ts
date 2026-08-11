@@ -84,6 +84,7 @@ export function scheduleVocabularyReview(
     easinessFactor,
     reviewIntervalDays,
     lastReviewAt: reviewedAt,
+    reviewHistory: [...(record.reviewHistory ?? []), reviewedAt],
     nextReviewAt: addLocalCalendarDays(reviewedAt, reviewIntervalDays),
     updatedAt: reviewedAt,
   };

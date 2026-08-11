@@ -17,6 +17,7 @@ import {
   type ReviewRating,
 } from "../review";
 import { detectBrowserLanguage } from "../i18n";
+import { normalizeContextForStorage } from "../context";
 import {
   DEFAULT_SETTINGS,
   LLM_PROVIDER_PRESETS,
@@ -168,6 +169,21 @@ export async function getFromStore<T>(
 export async function putInStore<T>(storeName: StoreName, value: T): Promise<void> {
   const store = await tx(storeName, "readwrite");
   await requestToPromise(store.put(value));
+}
+
+export async function updateVocabularyTranslation(
+  id: string,
+  translation: string,
+): Promise<VocabularyRecord | undefined> {
+  const record = await getFromStore<VocabularyRecord>("vocabulary", id);
+  if (!record) return undefined;
+  const updated = {
+    ...record,
+    translation,
+    updatedAt: new Date().toISOString(),
+  };
+  await putInStore("vocabulary", updated);
+  return normalizeVocabularyReview(updated);
 }
 
 export async function deleteFromStore(storeName: StoreName, id: IDBValidKey): Promise<void> {
@@ -460,7 +476,10 @@ export async function importSnapshot(snapshot: {
   for (const record of snapshot.footprints ?? []) await putInStore("footprints", record);
   for (const record of snapshot.highlights ?? []) await putInStore("highlights", record);
   for (const record of snapshot.vocabulary ?? []) {
-    const incoming = normalizeVocabularyReview(record);
+    const incoming = normalizeVocabularyReview({
+      ...record,
+      contextSentence: normalizeContextForStorage(record.contextSentence),
+    });
     const current = await getFromStore<VocabularyRecord>("vocabulary", incoming.id);
     if (!current || current.updatedAt <= incoming.updatedAt) {
       await putInStore("vocabulary", incoming);

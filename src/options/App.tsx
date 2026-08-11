@@ -1211,6 +1211,9 @@ function LearningActivityHeatmap({
                             interpolate(t.options.activity.translationSummary, {
                               count: dayActivity.translations,
                             }),
+                            interpolate(t.options.activity.reviewSummary, {
+                              count: dayActivity.reviews ?? 0,
+                            }),
                           ].map((summary) => (
                             <Typography
                               key={summary}
@@ -1315,6 +1318,7 @@ const EMPTY_ACTIVITY: DailyActivity = {
   highlights: 0,
   vocabulary: 0,
   translations: 0,
+  reviews: 0,
   total: 0,
 };
 
@@ -2355,7 +2359,21 @@ function VocabularyTab({
     refreshRevision,
   );
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [editingTranslationId, setEditingTranslationId] = useState<string>();
+  const [translationDraft, setTranslationDraft] = useState("");
   const hasFilters = Boolean(wordFilter || contextFilter || sourceFilter);
+
+  async function saveTranslation(item: VocabularyRecord): Promise<void> {
+    await runAction(async () => {
+      await sendMessage({
+        type: "UPDATE_VOCABULARY_TRANSLATION",
+        id: item.id,
+        translation: translationDraft,
+      });
+      setEditingTranslationId(undefined);
+      await onChange();
+    }, t.options.notices.explanationSaved);
+  }
 
   useEffect(
     () => setPage(0),
@@ -2519,10 +2537,13 @@ function VocabularyTab({
                           : t.options.actions.expandTranslation
                       }
                       onClick={() =>
-                        setExpandedRows((rows) => ({
-                          ...rows,
-                          [item.id]: !rows[item.id],
-                        }))
+                        setExpandedRows((rows) => {
+                          if (rows[item.id]) setEditingTranslationId(undefined);
+                          return {
+                            ...rows,
+                            [item.id]: !rows[item.id],
+                          };
+                        })
                       }
                     >
                       {expandedRows[item.id] ? (
@@ -2723,30 +2744,78 @@ function VocabularyTab({
                               ? t.content.translation
                               : t.content.explanation}
                           </Typography>
-                          <CopyIconButton
-                            label={t.options.actions.copyExplanation}
-                            text={item.translation || ""}
-                            notify={notify}
-                            t={t}
-                          />
+                          <Stack direction="row" spacing={0.5}>
+                            <IconButton
+                              size="small"
+                              aria-label={t.options.actions.editExplanation}
+                              title={t.options.actions.editExplanation}
+                              onClick={() => {
+                                setTranslationDraft(item.translation || "");
+                                setEditingTranslationId(item.id);
+                              }}
+                            >
+                              <SquarePen size={16} />
+                            </IconButton>
+                            <CopyIconButton
+                              label={t.options.actions.copyExplanation}
+                              text={item.translation || ""}
+                              notify={notify}
+                              t={t}
+                            />
+                          </Stack>
                         </Stack>
-                        <Box
-                          className="markdown-body"
-                          sx={{
-                            color: item.translation
-                              ? "text.primary"
-                              : "text.secondary",
-                            fontSize: 14,
-                            lineHeight: 1.65,
-                            overflowWrap: "anywhere",
-                            ...markdownBodySx,
-                          }}
-                          dangerouslySetInnerHTML={{
-                            __html: markdownToSafeHtml(
-                              item.translation || t.common.empty,
-                            ),
-                          }}
-                        />
+                        {editingTranslationId === item.id ? (
+                          <Stack spacing={1}>
+                            <TextField
+                              autoFocus
+                              fullWidth
+                              multiline
+                              minRows={5}
+                              value={translationDraft}
+                              label={
+                                isTranslation
+                                  ? t.content.translation
+                                  : t.content.explanation
+                              }
+                              onChange={(event) =>
+                                setTranslationDraft(event.target.value)
+                              }
+                            />
+                            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                              <Button
+                                size="small"
+                                onClick={() => setEditingTranslationId(undefined)}
+                              >
+                                {t.common.cancel}
+                              </Button>
+                              <Button
+                                size="small"
+                                variant="contained"
+                                onClick={() => void saveTranslation(item)}
+                              >
+                                {t.options.actions.saveExplanation}
+                              </Button>
+                            </Stack>
+                          </Stack>
+                        ) : (
+                          <Box
+                            className="markdown-body"
+                            sx={{
+                              color: item.translation
+                                ? "text.primary"
+                                : "text.secondary",
+                              fontSize: 14,
+                              lineHeight: 1.65,
+                              overflowWrap: "anywhere",
+                              ...markdownBodySx,
+                            }}
+                            dangerouslySetInnerHTML={{
+                              __html: markdownToSafeHtml(
+                                item.translation || t.common.empty,
+                              ),
+                            }}
+                          />
+                        )}
                       </Box>
                     </Collapse>
                   </TableCell>
@@ -2785,6 +2854,8 @@ function VocabularyReviewView({
   const copy = getReviewCopy(language);
   const [queue, setQueue] = useState<VocabularyRecord[]>([]);
   const [flipped, setFlipped] = useState(false);
+  const [isEditingExplanation, setIsEditingExplanation] = useState(false);
+  const [explanationDraft, setExplanationDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [dueCount, setDueCount] = useState(0);
@@ -2808,7 +2879,28 @@ function VocabularyReviewView({
     setDueCount(status.dueCount);
     setNextReviewAt(status.nextReviewAt);
     setFlipped(false);
+    setIsEditingExplanation(false);
+    setExplanationDraft("");
     setLoading(false);
+  }
+
+  async function saveExplanation(): Promise<void> {
+    const current = queue[0];
+    if (!current) return;
+    await sendMessage<VocabularyRecord>({
+      type: "UPDATE_VOCABULARY_TRANSLATION",
+      id: current.id,
+      translation: explanationDraft,
+    });
+    setQueue((records) =>
+      records.map((record) =>
+        record.id === current.id
+          ? { ...record, translation: explanationDraft }
+          : record,
+      ),
+    );
+    setIsEditingExplanation(false);
+    await onChange();
   }
 
   useEffect(() => {
@@ -2829,6 +2921,8 @@ function VocabularyReviewView({
       setQueue((records) => records.slice(1));
       setDueCount((count) => Math.max(0, count - 1));
       setFlipped(false);
+      setIsEditingExplanation(false);
+      setExplanationDraft("");
       await onChange();
       if (queue.length === 1) await loadQueue();
     } finally {
@@ -2904,15 +2998,70 @@ function VocabularyReviewView({
                 <Typography variant="caption" color="text.secondary">
                   {copy.context}
                 </Typography>
-                <Typography>{current.contextSentence}</Typography>
+                <Typography>
+                  {renderHighlightedContext(current.contextSentence, current.word)}
+                </Typography>
               </Box>
-              <Box
-                className="markdown-body"
-                sx={markdownBodySx}
-                dangerouslySetInnerHTML={{
-                  __html: markdownToSafeHtml(current.translation || ""),
-                }}
-              />
+              {isEditingExplanation ? (
+                <Stack spacing={1} width="100%">
+                  <TextField
+                    autoFocus
+                    fullWidth
+                    multiline
+                    minRows={5}
+                    label={copy.explanation}
+                    value={explanationDraft}
+                    onChange={(event) => setExplanationDraft(event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                  <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                    <Button
+                      size="small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsEditingExplanation(false);
+                      }}
+                    >
+                      {copy.cancel}
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="contained"
+                      disabled={submitting}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void saveExplanation();
+                      }}
+                    >
+                      {copy.saveExplanation}
+                    </Button>
+                  </Stack>
+                </Stack>
+              ) : (
+                <Stack spacing={0.75} width="100%">
+                  <Stack direction="row" justifyContent="flex-end">
+                    <IconButton
+                      size="small"
+                      aria-label={copy.editExplanation}
+                      title={copy.editExplanation}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setExplanationDraft(current.translation || "");
+                        setIsEditingExplanation(true);
+                      }}
+                    >
+                      <SquarePen size={16} />
+                    </IconButton>
+                  </Stack>
+                  <Box
+                    className="markdown-body"
+                    sx={markdownBodySx}
+                    dangerouslySetInnerHTML={{
+                      __html: markdownToSafeHtml(current.translation || ""),
+                    }}
+                  />
+                </Stack>
+              )}
               <Typography variant="caption" color="text.secondary">
                 {current.sourceTitle || current.sourceUrl}
               </Typography>
@@ -2963,6 +3112,10 @@ function getReviewCopy(language: AppSettings["ui"]["language"]) {
       dueCount: "今日还有 {{count}} 个词待复习",
       flipHint: "点击卡片查看释义",
       context: "上下文",
+      explanation: "解释",
+      editExplanation: "编辑解释",
+      saveExplanation: "保存解释",
+      cancel: "取消",
       speak: "发音",
       unfamiliar: "生疏",
       hesitant: "犹豫",
@@ -2979,6 +3132,10 @@ function getReviewCopy(language: AppSettings["ui"]["language"]) {
       dueCount: "今天還有 {{count}} 個詞待複習",
       flipHint: "點擊卡片查看解釋",
       context: "上下文",
+      explanation: "解釋",
+      editExplanation: "編輯解釋",
+      saveExplanation: "儲存解釋",
+      cancel: "取消",
       speak: "發音",
       unfamiliar: "生疏",
       hesitant: "猶豫",
@@ -2996,6 +3153,10 @@ function getReviewCopy(language: AppSettings["ui"]["language"]) {
       dueCount: "{{count}} words due today",
       flipHint: "Click the card to reveal the explanation",
       context: "Context",
+      explanation: "Explanation",
+      editExplanation: "Edit explanation",
+      saveExplanation: "Save explanation",
+      cancel: "Cancel",
       speak: "Speak",
       unfamiliar: "Unfamiliar",
       hesitant: "Hesitant",
@@ -3012,6 +3173,10 @@ function getReviewCopy(language: AppSettings["ui"]["language"]) {
       dueCount: "Quedan {{count}} palabras para hoy",
       flipHint: "Haz clic para ver la explicación",
       context: "Contexto",
+      explanation: "Explicación",
+      editExplanation: "Editar explicación",
+      saveExplanation: "Guardar explicación",
+      cancel: "Cancelar",
       speak: "Pronunciar",
       unfamiliar: "Desconocida",
       hesitant: "Dudosa",
@@ -3146,6 +3311,15 @@ function RecordsTablePagination({
 
 function AboutTab({ t }: { t: Messages }) {
   const releases = [
+    {
+      version: t.options.about.releases.v1_2_1.version,
+      summary: t.options.about.releases.v1_2_1.summary,
+      features: [
+        t.options.about.releases.v1_2_1.feature1,
+        t.options.about.releases.v1_2_1.feature2,
+        t.options.about.releases.v1_2_1.feature3,
+      ],
+    },
     {
       version: t.options.about.releases.v1_2.version,
       summary: t.options.about.releases.v1_2.summary,
