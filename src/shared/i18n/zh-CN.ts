@@ -136,6 +136,8 @@ export const zhCN: Messages = {
       restoreDefault: "恢复默认",
       test: "测试",
       testing: "测试中…",
+      fetchModels: "获取模型",
+      fetchingModels: "获取中…",
     },
     confirmations: {
       archiveFootprint: "归档这条足迹？归档后将不再显示在当前列表中。",
@@ -144,7 +146,7 @@ export const zhCN: Messages = {
       deleteTranslation: "删除这条翻译？",
     },
     settings: {
-      llm: "大模型",
+      llm: "大模型配置 - BYOK 模式",
       llmCostNotice:
         "注意：调用大模型翻译或查词有可能产生费用，由所选择的模型厂商决定和收取，请妥善配置并保存 Key 信息。",
       llmOnboardingNotice: "查词和翻译功能需要 LLM 支持，请先配置",
@@ -166,9 +168,11 @@ export const zhCN: Messages = {
       },
       baseUrl: "Base URL",
       apiKey: "API Key",
-      apiKeyHelp: "本配置信息仅会保存到浏览器本地。",
+      apiKeyHelp: "本配置信息仅会保存到你的浏览器本地。",
       model: "模型",
-      modelHelp: "建议选用 Flash 或类似类型的模型以加快返回速度。",
+      modelHelp:
+        "可以先获取模型后选择，也可以自行输入；建议选用 Flash 或类似模型以加快返回速度。",
+      advanced: "高级配置",
       temperature: "Temperature",
       timeoutMs: "超时时间 ms",
       promptTemplate: "提示词模板",
@@ -183,11 +187,9 @@ export const zhCN: Messages = {
       language: "语言",
       languageHelp:
         "所选语言为界面语言，同时为大模型翻译的目标语言，建议开始用的时候确定好之后就不要再修改。",
-      pronunciation: "发音",
-      merriamWebsterApiKey: "Merriam-Webster API Key",
-      preferences: "偏好",
+      preferences: "使用偏好",
       enableExtensionGlobally: "启用全局页面划线",
-      recordsPageSize: "划线和生词表每页数量",
+      recordsPageSize: "列表每页记录数",
       defaultHighlightColor: "默认划线颜色",
       disabledSites: "停用站点",
       disabledSitesHelp: "每行一个 hostname，例如：example.com",
@@ -212,11 +214,15 @@ export const zhCN: Messages = {
       promptRestored: "已恢复默认提示词。",
       pronunciationStarted: "已开始播放发音。",
       llmConnectionSucceeded: "LLM 连接测试成功。",
+      modelsFetched: "已获取 {{count}} 个模型。",
     },
     errors: {
       promptTemplateMissingVariables: "提示词模板缺少必需变量：{{variables}}",
       llmConfigRequired: "必须填写：{{fields}}。",
       llmConnectionFailed: "LLM 连接测试失败：{{reason}}",
+      modelListConfigRequired: "请先配置：{{fields}}。",
+      modelListEmpty: "接口未返回可用模型，请确认当前账号拥有模型访问权限。",
+      modelListFetchFailed: "获取模型失败：{{reason}}",
     },
     statusDescriptions: {
       active: "这条划线已在来源页面恢复。",
@@ -233,6 +239,13 @@ export const zhCN: Messages = {
     about: {
       releases: {
         title: "Releases",
+        v1_3: {
+          version: "1.3.0",
+          summary: "优化配置功能和其他细节。",
+          feature1: "优化配置界面 UI，大模型配置增加获取模型功能。",
+          feature2: "页面选择文字后可以直接通过添加笔记划线。",
+          feature3: "修改英文单词发音的数据来源，增强稳定性。",
+        },
         v1_2_1: {
           version: "1.2.1",
           summary: "已知问题修正和小优化。",
@@ -265,7 +278,7 @@ export const zhCN: Messages = {
           feature2: "调用 AI 大模型解释选中的生词，并自动保存到生词表。",
           feature3:
             "再次访问页面时自动恢复之前的划线和生词下划线，并可查看生词翻译。",
-          feature4: "支持生词发音，优先使用词典音频，并提供浏览器语音兜底。",
+          feature4: "使用本地缓存的有道音频播放英语单词发音。",
           feature5: "支持关键学习数据导入导出，便于备份、复习和迁移。",
         },
       },

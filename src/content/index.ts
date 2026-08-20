@@ -51,6 +51,11 @@ interface SelectionState {
   isCrossBlock: boolean;
 }
 
+interface SavedHighlight {
+  element: HTMLElement;
+  id: string;
+}
+
 interface TextSnapshot {
   nodes: Text[];
   text: string;
@@ -707,17 +712,26 @@ function renderToolbar(selection: SelectionState): void {
       ),
     );
     toolbar.append(
+      createIconButton("notebook-pen", t.note, () =>
+        saveHighlightAndShowNote(selection),
+      ),
+    );
+    toolbar.append(
       createIconButton(
         "highlighter",
         selection.isCrossBlock ? t.splitHighlight : t.highlight,
-        () => saveHighlight(selection, "yellow"),
+        async () => {
+          await saveHighlight(selection, "yellow");
+        },
       ),
     );
     for (const color of Object.keys(HIGHLIGHT_COLORS) as HighlightColor[]) {
       const button = createIconButton(
         "circle",
         interpolate(t.highlightColor, { color }),
-        () => saveHighlight(selection, color),
+        async () => {
+          await saveHighlight(selection, color);
+        },
       );
       button.className = "color";
       button.title = color;
@@ -902,7 +916,7 @@ function cancelActiveStream(): void {
 async function saveHighlight(
   selection: SelectionState,
   color: HighlightColor,
-): Promise<void> {
+): Promise<SavedHighlight | undefined> {
   const existingHighlight = findExistingHighlightElementForRange(
     selection.range,
   );
@@ -915,12 +929,11 @@ async function saveHighlight(
       color,
     });
     showTransientSuccess(existingHighlight.getBoundingClientRect());
-    return;
+    return { element: existingHighlight, id: existingId };
   }
 
   if (selection.isCrossBlock) {
-    await saveSplitHighlights(selection, color);
-    return;
+    return saveSplitHighlights(selection, color);
   }
 
   const now = new Date().toISOString();
@@ -939,17 +952,27 @@ async function saveHighlight(
     updatedAt: now,
   };
 
-  wrapRange(selection.range, color, id);
+  const element = wrapRange(selection.range, color, id);
   await sendMessage({ type: "SAVE_HIGHLIGHT", record });
   hideToolbar();
+  return { element, id };
+}
+
+async function saveHighlightAndShowNote(
+  selection: SelectionState,
+): Promise<void> {
+  const savedHighlight = await saveHighlight(selection, "yellow");
+  if (!savedHighlight) return;
+  showNoteEditor(savedHighlight.element, savedHighlight.id);
 }
 
 async function saveSplitHighlights(
   selection: SelectionState,
   color: HighlightColor,
-): Promise<void> {
+): Promise<SavedHighlight | undefined> {
   const blocks = getIntersectingBlocks(selection.range);
   let saved = 0;
+  let firstSavedHighlight: SavedHighlight | undefined;
 
   for (const block of blocks) {
     const text = block.innerText.trim();
@@ -973,8 +996,9 @@ async function saveSplitHighlights(
       updatedAt: now,
     };
 
-    wrapRange(range, color, id);
+    const element = wrapRange(range, color, id);
     await sendMessage({ type: "SAVE_HIGHLIGHT", record });
+    firstSavedHighlight ??= { element, id };
     saved += 1;
   }
 
@@ -985,6 +1009,7 @@ async function saveSplitHighlights(
     }),
     false,
   );
+  return firstSavedHighlight;
 }
 
 async function restoreHighlights(retriesRemaining = 1): Promise<void> {

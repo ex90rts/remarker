@@ -7,6 +7,10 @@ import {
   type LlmStreamEvent,
 } from "../shared/llm-stream";
 import { stripOuterCodeFence } from "../shared/markdown";
+import {
+  buildLlmModelsUrl,
+  parseLlmModelIds,
+} from "../shared/llm-models";
 import { normalizeContextForStorage } from "../shared/context";
 import { getHostname, normalizeUrlKey } from "../shared/url";
 import {
@@ -56,6 +60,7 @@ import {
   normalizeVocabularyReview,
 } from "../shared/review";
 import { detectSpeechLanguage, normalizeWord } from "../shared/word";
+import { getPronunciationAudioUrl } from "../shared/pronunciation";
 
 const TARGET_LANGUAGE_NAMES: Record<AppSettings["ui"]["language"], string> = {
   "zh-CN": "Simplified Chinese",
@@ -270,6 +275,9 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
     case "GET_PRONUNCIATION":
       return getPronunciation(message.word, message.language);
 
+    case "GET_YOUDAO_PRONUNCIATION":
+      return getYoudaoPronunciation(message.word);
+
     case "GET_SETTINGS":
       return getSettings();
 
@@ -288,6 +296,9 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
     case "TEST_LLM_CONNECTION":
       await testLlmConnection(message.settings);
       return { connected: true };
+
+    case "GET_LLM_MODELS":
+      return getLlmModels(message.settings);
 
     case "OPEN_SETTINGS_PAGE":
       await chrome.tabs.create({
@@ -710,6 +721,47 @@ async function testLlmConnection(settings: AppSettings): Promise<void> {
   }
 }
 
+async function getLlmModels(settings: AppSettings): Promise<string[]> {
+  const llm = getEffectiveLlmConfig(settings.llm);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), settings.llm.timeoutMs);
+
+  try {
+    const response = await fetch(buildLlmModelsUrl(llm.baseUrl), {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${llm.apiKey}`,
+      },
+    });
+
+    if (!response.ok) throw await createLlmRequestError(response);
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      throw new Error("The provider returned a model list that is not valid JSON.");
+    }
+    return parseLlmModelIds(payload);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        `Fetching models timed out after ${settings.llm.timeoutMs} ms.`,
+      );
+    }
+    if (error instanceof TypeError) {
+      throw new Error(
+        "Unable to reach the model service. Check the Base URL and network connection.",
+      );
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function safeNormalizeUrlKey(sourceUrl: string): string {
   try {
     return normalizeUrlKey(sourceUrl);
@@ -982,82 +1034,27 @@ async function getPronunciation(
       language: detectSpeechLanguage(word, requestedSpeechLanguage),
     };
   }
-  const dictionaryLanguage = "en-US";
-  const settings = await getSettings();
-  const apiKey = settings.pronunciation.merriamWebsterApiKey.trim();
-
-  if (apiKey) {
-    const result = await getCachedPronunciation(word, dictionaryLanguage, "merriam-webster") ??
-      await getMerriamWebsterAudio(word, apiKey).catch(
-      () => undefined,
-    );
-    if (result) return cachePronunciation(word, result);
-  }
-
-  const freeDictionary =
-    await getCachedPronunciation(word, dictionaryLanguage, "free-dictionary") ??
-    await getFreeDictionaryAudio(word).catch(() => undefined);
-  return freeDictionary ? cachePronunciation(word, freeDictionary) : {
+  return getYoudaoPronunciation(word).catch(() => ({
     provider: "speech-synthesis",
     language: requestedSpeechLanguage,
-  };
+  }));
 }
 
-async function getMerriamWebsterAudio(
+async function getYoudaoPronunciation(
   word: string,
-  apiKey: string,
-): Promise<PronunciationResult | undefined> {
-  const response = await fetch(
-    `https://www.dictionaryapi.com/api/v3/references/collegiate/json/${encodeURIComponent(word)}?key=${encodeURIComponent(apiKey)}`,
-  );
-  if (!response.ok) return undefined;
+): Promise<PronunciationResult> {
+  const language = "en-US";
+  const cached = await getCachedPronunciation(word, language, "youdao");
+  if (cached) return cached;
 
-  const data = (await response.json()) as Array<{
-    hwi?: { prs?: Array<{ mw?: string; sound?: { audio?: string } }> };
-  }>;
-  const pronunciation = data.find((entry) =>
-    entry.hwi?.prs?.some((pronunciation) => pronunciation.sound?.audio),
-  )?.hwi?.prs?.find((item) => item.sound?.audio);
-  const audio = pronunciation?.sound?.audio;
-  if (!audio) return undefined;
+  const audioUrl = getPronunciationAudioUrl(word);
+  if (!audioUrl) throw new Error("Pronunciation is only available for English words.");
 
-  const subdirectory = getMerriamWebsterAudioSubdirectory(audio);
-  return {
-    provider: "merriam-webster",
-    audioUrl: `https://media.merriam-webster.com/audio/prons/en/us/mp3/${subdirectory}/${audio}.mp3`,
-    language: "en-US",
-    phonetic: pronunciation?.mw,
-  };
-}
-
-function getMerriamWebsterAudioSubdirectory(audio: string): string {
-  if (audio.startsWith("bix")) return "bix";
-  if (audio.startsWith("gg")) return "gg";
-  const first = audio[0]?.toLowerCase();
-  return first && /^[a-z]$/.test(first) ? first : "number";
-}
-
-async function getFreeDictionaryAudio(
-  word: string,
-): Promise<PronunciationResult | undefined> {
-  const response = await fetch(
-    `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`,
-  );
-  if (!response.ok) return undefined;
-
-  const data = (await response.json()) as Array<{
-    phonetic?: string;
-    phonetics?: Array<{ text?: string; audio?: string }>;
-  }>;
-  const audioUrl = data
-    .flatMap((entry) => entry.phonetics ?? [])
-    .map((phonetic) => phonetic.audio)
-    .find((audio): audio is string => Boolean(audio));
-
-  if (!audioUrl) return undefined;
-  const phonetic = data.flatMap((entry) => entry.phonetics ?? [])
-    .find((item) => item.text)?.text ?? data.find((entry) => entry.phonetic)?.phonetic;
-  return { provider: "free-dictionary", audioUrl, phonetic, language: "en-US" };
+  return cachePronunciation(word, {
+    provider: "youdao",
+    audioUrl,
+    language,
+  });
 }
 
 const MAX_AUDIO_CACHE_BYTES = 512 * 1024;
@@ -1065,7 +1062,7 @@ const MAX_AUDIO_CACHE_BYTES = 512 * 1024;
 function getAudioCacheKey(
   word: string,
   language: string,
-  provider: "merriam-webster" | "free-dictionary",
+  provider: "youdao",
 ): string {
   return `${language}:${normalizeWord(word)}:${provider}`;
 }
@@ -1073,7 +1070,7 @@ function getAudioCacheKey(
 async function getCachedPronunciation(
   word: string,
   language: string,
-  provider: "merriam-webster" | "free-dictionary",
+  provider: "youdao",
 ): Promise<PronunciationResult | undefined> {
   const key = getAudioCacheKey(word, language, provider);
   const cached = await getAudioCache(key);

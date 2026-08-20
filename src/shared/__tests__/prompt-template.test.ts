@@ -3,7 +3,6 @@ import {
   DEFAULT_SETTINGS,
   getDefaultPromptTemplate,
   getPromptTemplateForSelectionKind,
-  migrateLegacyPromptTemplate,
 } from "../types";
 
 describe("prompt templates", () => {
@@ -18,6 +17,14 @@ describe("prompt templates", () => {
     expect(translation).toContain("{{context}}");
     expect(lookup).not.toContain("{{task}}");
     expect(translation).not.toContain("{{task}}");
+    expect(lookup).toContain("Selected Word:");
+    expect(translation).toContain("Selected Content:");
+    expect(lookup.indexOf("Requirements:")).toBeLessThan(
+      lookup.indexOf("{{selection}}"),
+    );
+    expect(translation.indexOf("Requirements:")).toBeLessThan(
+      translation.indexOf("{{selection}}"),
+    );
   });
 
   it("provides separate Chinese defaults", () => {
@@ -28,19 +35,13 @@ describe("prompt templates", () => {
     expect(translation).toContain("翻译");
     expect(lookup).not.toContain("{{task}}");
     expect(translation).not.toContain("{{task}}");
-  });
-
-  it("migrates a legacy custom task variable for each prompt type", () => {
-    const legacy = "Task: {{task}}\nSelection: {{selection}}\nContext: {{context}}";
-
-    expect(migrateLegacyPromptTemplate("lookup", legacy, "en")).toContain(
-      "Explain the selected word in context.",
+    expect(lookup).toContain("选中词语：");
+    expect(translation).toContain("选中内容：");
+    expect(lookup.indexOf("要求：")).toBeLessThan(
+      lookup.indexOf("{{selection}}"),
     );
-    expect(migrateLegacyPromptTemplate("translation", legacy, "en")).toContain(
-      "Translate the selected text according to its context.",
-    );
-    expect(migrateLegacyPromptTemplate("lookup", legacy, "en")).not.toContain(
-      "{{task}}",
+    expect(translation.indexOf("要求：")).toBeLessThan(
+      translation.indexOf("{{selection}}"),
     );
   });
 

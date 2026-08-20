@@ -52,10 +52,6 @@ function sanitizeSettings(settingsInput: unknown, includeSensitive: boolean): Re
     }
   }
 
-  if (!includeSensitive && typeof settings.pronunciation === "object" && settings.pronunciation) {
-    (settings.pronunciation as Record<string, unknown>).merriamWebsterApiKey = "";
-  }
-
   return settings;
 }
 

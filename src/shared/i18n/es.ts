@@ -136,6 +136,8 @@ export const es: Messages = {
       restoreDefault: "Restaurar valor predeterminado",
       test: "Probar",
       testing: "Probando…",
+      fetchModels: "Obtener modelos",
+      fetchingModels: "Obteniendo…",
     },
     confirmations: {
       archiveFootprint:
@@ -145,7 +147,7 @@ export const es: Messages = {
       deleteTranslation: "¿Eliminar esta traducción?",
     },
     settings: {
-      llm: "LLM",
+      llm: "Configuración del LLM - Modo BYOK",
       llmCostNotice:
         "Nota: usar un LLM para traducir o consultar palabras puede generar costes, según el proveedor elegido. Configura y guarda tu clave con cuidado.",
       llmOnboardingNotice:
@@ -172,10 +174,11 @@ export const es: Messages = {
       },
       baseUrl: "Base URL",
       apiKey: "API Key",
-      apiKeyHelp: "Esta configuración solo se guarda en tu navegador local.",
+      apiKeyHelp: "Esta configuración solo se guarda localmente en tu navegador.",
       model: "Modelo",
       modelHelp:
-        "Se recomiendan modelos Flash o similares para obtener respuestas más rápidas.",
+        "Obtén y selecciona un modelo, o introdúcelo manualmente. Se recomiendan modelos Flash o similares para obtener respuestas más rápidas.",
+      advanced: "Configuración avanzada",
       temperature: "Temperature",
       timeoutMs: "Tiempo de espera ms",
       promptTemplate: "Plantilla de prompt",
@@ -192,11 +195,9 @@ export const es: Messages = {
       language: "Idioma",
       languageHelp:
         "El idioma seleccionado se usa para la interfaz y como idioma de destino de traducción del LLM. Se recomienda elegirlo al empezar a usar la extensión y no cambiarlo después.",
-      pronunciation: "Pronunciación",
-      merriamWebsterApiKey: "Merriam-Webster API Key",
-      preferences: "Preferencias",
+      preferences: "Preferencias de uso",
       enableExtensionGlobally: "Activar resaltado de páginas globalmente",
-      recordsPageSize: "Tamaño de página de resaltados y vocabulario",
+      recordsPageSize: "Registros por página",
       defaultHighlightColor: "Color de resaltado predeterminado",
       disabledSites: "Sitios desactivados",
       disabledSitesHelp: "Un hostname por línea, por ejemplo: example.com",
@@ -223,12 +224,17 @@ export const es: Messages = {
       pronunciationStarted: "Pronunciación iniciada.",
       llmConnectionSucceeded:
         "La prueba de conexión con el LLM se realizó correctamente.",
+      modelsFetched: "Se obtuvieron {{count}} modelos.",
     },
     errors: {
       promptTemplateMissingVariables:
         "A la plantilla de prompt le faltan variables obligatorias: {{variables}}",
       llmConfigRequired: "Configuración obligatoria: {{fields}}.",
       llmConnectionFailed: "Falló la prueba de conexión con el LLM: {{reason}}",
+      modelListConfigRequired: "Configura primero estos campos: {{fields}}.",
+      modelListEmpty:
+        "La API no devolvió modelos disponibles. Comprueba que esta cuenta tenga acceso a modelos.",
+      modelListFetchFailed: "No se pudieron obtener los modelos: {{reason}}",
     },
     statusDescriptions: {
       active: "Este resaltado se restauró en la página fuente.",
@@ -247,6 +253,16 @@ export const es: Messages = {
     about: {
       releases: {
         title: "Releases",
+        v1_3: {
+          version: "1.3.0",
+          summary: "Mejora la configuración y otros detalles.",
+          feature1:
+            "Mejora la interfaz de configuración y permite obtener modelos en la configuración del modelo de IA.",
+          feature2:
+            "Permite resaltar texto seleccionado en la página directamente al añadir una nota.",
+          feature3:
+            "Cambia la fuente de datos de pronunciación de palabras inglesas para mejorar la estabilidad.",
+        },
         v1_2_1: {
           version: "1.2.1",
           summary: "Correcciones de problemas conocidos y pequeñas mejoras.",
@@ -292,7 +308,7 @@ export const es: Messages = {
           feature3:
             "Al volver a una página, restaura resaltados y subrayados de vocabulario, con traducciones disponibles desde la página.",
           feature4:
-            "Reproduce la pronunciación de palabras mediante audio de diccionario configurado o síntesis de voz del navegador como respaldo.",
+            "Reproduce palabras inglesas mediante audio de Youdao almacenado en caché.",
           feature5:
             "Importa y exporta los datos clave de aprendizaje para copias de seguridad, repaso y migración.",
         },

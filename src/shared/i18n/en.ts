@@ -134,6 +134,8 @@ export const en = {
       restoreDefault: "Restore default",
       test: "Test",
       testing: "Testing…",
+      fetchModels: "Fetch models",
+      fetchingModels: "Fetching…",
     },
     confirmations: {
       archiveFootprint:
@@ -143,7 +145,7 @@ export const en = {
       deleteTranslation: "Delete this translation?",
     },
     settings: {
-      llm: "LLM",
+      llm: "LLM configuration - BYOK mode",
       llmCostNotice:
         "Note: Using an LLM for translation or word lookup may incur costs, depending on the selected provider. Configure and save your key carefully.",
       llmOnboardingNotice:
@@ -169,10 +171,11 @@ export const en = {
       },
       baseUrl: "Base URL",
       apiKey: "API Key",
-      apiKeyHelp: "This configuration is stored only in your local browser.",
+      apiKeyHelp: "This configuration is saved only in your browser.",
       model: "Model",
       modelHelp:
-        "Flash or similar fast models are recommended for quicker responses.",
+        "Fetch and select a model, or enter one manually. Flash or similar models are recommended for faster responses.",
+      advanced: "Advanced settings",
       temperature: "Temperature",
       timeoutMs: "Timeout ms",
       promptTemplate: "Prompt template",
@@ -189,11 +192,9 @@ export const en = {
       language: "Language",
       languageHelp:
         "The selected language is used for the interface and as the LLM translation target language. It is recommended to choose it before you start using the extension and avoid changing it later.",
-      pronunciation: "Pronunciation",
-      merriamWebsterApiKey: "Merriam-Webster API Key",
-      preferences: "Preferences",
+      preferences: "Usage preferences",
       enableExtensionGlobally: "Enable page highlighting globally",
-      recordsPageSize: "Highlights and vocabulary page size",
+      recordsPageSize: "Records per page",
       defaultHighlightColor: "Default highlight color",
       disabledSites: "Disabled sites",
       disabledSitesHelp: "One hostname per line, for example: example.com",
@@ -218,12 +219,17 @@ export const en = {
       promptRestored: "Default prompt restored.",
       pronunciationStarted: "Pronunciation started.",
       llmConnectionSucceeded: "LLM connection test succeeded.",
+      modelsFetched: "Fetched {{count}} models.",
     },
     errors: {
       promptTemplateMissingVariables:
         "Prompt template is missing required variables: {{variables}}",
       llmConfigRequired: "Required configuration: {{fields}}.",
       llmConnectionFailed: "LLM connection test failed: {{reason}}",
+      modelListConfigRequired: "Configure these fields first: {{fields}}.",
+      modelListEmpty:
+        "The API returned no available models. Check that this account has model access.",
+      modelListFetchFailed: "Failed to fetch models: {{reason}}",
     },
     statusDescriptions: {
       active: "This highlight was restored on the source page.",
@@ -241,6 +247,16 @@ export const en = {
     about: {
       releases: {
         title: "Releases",
+        v1_3: {
+          version: "1.3.0",
+          summary: "Improves configuration and other details.",
+          feature1:
+            "Refines the configuration UI and adds model fetching to LLM settings.",
+          feature2:
+            "Lets you highlight selected page text directly by adding a note.",
+          feature3:
+            "Changes the pronunciation data source for English words to improve stability.",
+        },
         v1_2_1: {
           version: "1.2.1",
           summary: "Known issue fixes and minor improvements.",
@@ -282,7 +298,7 @@ export const en = {
           feature3:
             "When revisiting a page, restore previous highlights and vocabulary underlines, with translations available from the page.",
           feature4:
-            "Play word pronunciation through configured dictionary audio or browser speech synthesis fallback.",
+            "Play English word pronunciation through cached Youdao audio.",
           feature5:
             "Import and export key learning data for backup, review, and migration.",
         },

@@ -52,10 +52,12 @@ export type RuntimeMessage =
       forceRefresh?: boolean;
     }
   | { type: "GET_PRONUNCIATION"; word: string; language?: string }
+  | { type: "GET_YOUDAO_PRONUNCIATION"; word: string }
   | { type: "GET_SETTINGS" }
   | { type: "GET_OPTIONS_OVERVIEW" }
   | { type: "SAVE_SETTINGS"; settings: AppSettings }
   | { type: "TEST_LLM_CONNECTION"; settings: AppSettings }
+  | { type: "GET_LLM_MODELS"; settings: AppSettings }
   | { type: "OPEN_SETTINGS_PAGE" }
   | { type: "LIST_ALL_DATA" }
   | {
@@ -99,7 +101,7 @@ export interface OptionsOverviewResult {
 }
 
 export interface PronunciationResult {
-  provider: "merriam-webster" | "free-dictionary" | "speech-synthesis";
+  provider: "youdao" | "speech-synthesis";
   audioDataUrl?: string;
   audioUrl?: string;
   phonetic?: string;

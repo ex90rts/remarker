@@ -1,10 +1,15 @@
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
+  Autocomplete,
   Box,
   Button,
   Checkbox,
   Chip,
   Collapse,
   Divider,
+  FormLabel,
   FormControlLabel,
   IconButton,
   Menu,
@@ -82,13 +87,13 @@ import {
 } from "../shared/i18n";
 import type { Messages } from "../shared/i18n";
 import { markdownToSafeHtml } from "../shared/markdown";
+import { playPronunciation } from "../shared/pronunciation";
 import { getTodayReviewProgress } from "../shared/review";
 import type { TodayReviewProgress } from "../shared/review";
 import type {
   DataQuery,
   ListAllDataResult,
   OptionsOverviewResult,
-  PronunciationResult,
   QueryResult,
   RuntimeMessage,
 } from "../shared/messages";
@@ -104,6 +109,7 @@ import {
   normalizeLlmProvider,
   normalizeRecordsPageSize,
 } from "../shared/types";
+import { isSingleEnglishWord } from "../shared/word";
 import type {
   AppSettings,
   FootprintListItem,
@@ -156,6 +162,27 @@ const HIGHLIGHT_COLORS: Record<HighlightColor, string> = {
   pink: "#ffc2d4",
   purple: "#d8c7ff",
 };
+const HIGHLIGHT_COLOR_OPTIONS = Object.keys(
+  HIGHLIGHT_COLORS,
+) as HighlightColor[];
+
+function HighlightColorPreview({ color }: { color: HighlightColor }) {
+  return (
+    <Box
+      component="span"
+      sx={{
+        display: "inline-block",
+        px: 0.5,
+        borderRadius: "2px",
+        bgcolor: HIGHLIGHT_COLORS[color],
+        color: "#172033",
+        lineHeight: 1.6,
+      }}
+    >
+      {color}
+    </Box>
+  );
+}
 
 const REMARKER_GITHUB_URL = "https://github.com/ex90rts/remarker";
 const REPORT_ISSUE_URL = "https://github.com/ex90rts/remarker/issues/new";
@@ -606,8 +633,20 @@ export function App() {
               </Tabs>
             )}
           </Stack>
-          <Paper variant="outlined" sx={{ minWidth: 0, overflow: "hidden" }}>
-            <Box p={{ xs: 1.5, md: 2.25 }} sx={{ overflowX: "auto" }}>
+          {tab === "settings" && overview ? (
+            <SettingsTab
+              settingsValue={overview.settings}
+              getFullSnapshot={getFullSnapshot}
+              includeSensitive={includeSensitive}
+              setIncludeSensitive={setIncludeSensitive}
+              runAction={runAction}
+              notify={notify}
+              onChange={reload}
+              t={t}
+            />
+          ) : (
+            <Paper variant="outlined" sx={{ minWidth: 0, overflow: "hidden" }}>
+              <Box p={{ xs: 1.5, md: 2.25 }} sx={{ overflowX: "auto" }}>
               {tab === "footprints" && (
                 <FootprintsTab
                   recordsPageSize={recordsPageSize}
@@ -666,21 +705,10 @@ export function App() {
                   t={t}
                 />
               )}
-              {tab === "settings" && overview && (
-                <SettingsTab
-                  settingsValue={overview.settings}
-                  getFullSnapshot={getFullSnapshot}
-                  includeSensitive={includeSensitive}
-                  setIncludeSensitive={setIncludeSensitive}
-                  runAction={runAction}
-                  notify={notify}
-                  onChange={reload}
-                  t={t}
-                />
-              )}
-              {tab === "about" && <AboutTab t={t} />}
-            </Box>
-          </Paper>
+                {tab === "about" && <AboutTab t={t} />}
+              </Box>
+            </Paper>
+          )}
         </Box>
       </Box>
       <Toast toast={toast} onClose={() => setToast(undefined)} />
@@ -2571,15 +2599,6 @@ function VocabularyTab({
                     >
                       {item.word}
                     </Typography>
-                    {!isTranslation && item.phonetic && (
-                      <Typography
-                        component="div"
-                        variant="caption"
-                        color="text.secondary"
-                      >
-                        /{item.phonetic}/
-                      </Typography>
-                    )}
                     <Typography
                       component="div"
                       variant="caption"
@@ -2591,16 +2610,19 @@ function VocabularyTab({
                   </TableCell>
                   {!isTranslation && (
                     <TableCell>
-                      <IconButton
-                        aria-label={interpolate(t.options.actions.speakWord, {
-                          word: item.word,
-                        })}
-                        onClick={() =>
-                          void runAction(() => speakWord(item.word))
-                        }
-                      >
-                        <Volume2 size={16} />
-                      </IconButton>
+                      {isSingleEnglishWord(item.word) && (
+                        <IconButton
+                          aria-label={interpolate(
+                            t.options.actions.speakWord,
+                            { word: item.word },
+                          )}
+                          onClick={() =>
+                            void runAction(() => playPronunciation(item.word))
+                          }
+                        >
+                          <Volume2 size={16} />
+                        </IconButton>
+                      )}
                     </TableCell>
                   )}
                   <TableCell sx={{ width: 240, maxWidth: 240 }}>
@@ -2781,10 +2803,16 @@ function VocabularyTab({
                                 setTranslationDraft(event.target.value)
                               }
                             />
-                            <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                            <Stack
+                              direction="row"
+                              justifyContent="flex-end"
+                              spacing={1}
+                            >
                               <Button
                                 size="small"
-                                onClick={() => setEditingTranslationId(undefined)}
+                                onClick={() =>
+                                  setEditingTranslationId(undefined)
+                                }
                               >
                                 {t.common.cancel}
                               </Button>
@@ -2978,18 +3006,17 @@ function VocabularyReviewView({
           <Typography variant="h3" textAlign="center">
             {current.word}
           </Typography>
-          {current.phonetic && (
-            <Typography color="text.secondary">/{current.phonetic}/</Typography>
+          {isSingleEnglishWord(current.word) && (
+            <Button
+              startIcon={<Volume2 size={16} />}
+              onClick={(event) => {
+                event.stopPropagation();
+                void playPronunciation(current.word);
+              }}
+            >
+              {copy.speak}
+            </Button>
           )}
-          <Button
-            startIcon={<Volume2 size={16} />}
-            onClick={(event) => {
-              event.stopPropagation();
-              void speakWord(current.word, language);
-            }}
-          >
-            {copy.speak}
-          </Button>
           {!flipped ? (
             <Typography color="text.secondary">{copy.flipHint}</Typography>
           ) : (
@@ -2999,7 +3026,10 @@ function VocabularyReviewView({
                   {copy.context}
                 </Typography>
                 <Typography>
-                  {renderHighlightedContext(current.contextSentence, current.word)}
+                  {renderHighlightedContext(
+                    current.contextSentence,
+                    current.word,
+                  )}
                 </Typography>
               </Box>
               {isEditingExplanation ? (
@@ -3011,7 +3041,9 @@ function VocabularyReviewView({
                     minRows={5}
                     label={copy.explanation}
                     value={explanationDraft}
-                    onChange={(event) => setExplanationDraft(event.target.value)}
+                    onChange={(event) =>
+                      setExplanationDraft(event.target.value)
+                    }
                     onClick={(event) => event.stopPropagation()}
                   />
                   <Stack direction="row" justifyContent="flex-end" spacing={1}>
@@ -3312,6 +3344,15 @@ function RecordsTablePagination({
 function AboutTab({ t }: { t: Messages }) {
   const releases = [
     {
+      version: t.options.about.releases.v1_3.version,
+      summary: t.options.about.releases.v1_3.summary,
+      features: [
+        t.options.about.releases.v1_3.feature1,
+        t.options.about.releases.v1_3.feature2,
+        t.options.about.releases.v1_3.feature3,
+      ],
+    },
+    {
       version: t.options.about.releases.v1_2_1.version,
       summary: t.options.about.releases.v1_2_1.summary,
       features: [
@@ -3559,6 +3600,33 @@ function ConfirmPopover({
   );
 }
 
+function SettingsField({
+  label,
+  labelAction,
+  inputId,
+  children,
+}: {
+  label: ReactNode;
+  labelAction?: ReactNode;
+  inputId: string;
+  children: ReactNode;
+}) {
+  return (
+    <Stack spacing={0.875}>
+      <Stack direction="row" alignItems="center" justifyContent="space-between">
+        <FormLabel
+          htmlFor={inputId}
+          sx={{ color: "text.primary", fontSize: "0.875rem", fontWeight: 600 }}
+        >
+          {label}
+        </FormLabel>
+        {labelAction}
+      </Stack>
+      {children}
+    </Stack>
+  );
+}
+
 function SettingsTab({
   settingsValue,
   getFullSnapshot,
@@ -3585,11 +3653,13 @@ function SettingsTab({
   const [promptTemplateType, setPromptTemplateType] =
     useState<PromptTemplateType>("lookup");
   const [isTestingLlm, setIsTestingLlm] = useState(false);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const fetchingModelsRef = useRef(false);
   const [showOnboarding, setShowOnboarding] = useState(
     window.location.hash.includes("onboarding=1"),
   );
 
-  useEffect(() => setSettings(settingsValue), [settingsValue]);
   useEffect(() => {
     chrome.storage.local
       .get(["globalEnabled", "disabledSites"])
@@ -3603,7 +3673,43 @@ function SettingsTab({
       });
   }, []);
 
-  async function saveSettings() {
+  async function savePreferences() {
+    const language = settings.ui.language;
+    const savedLlm = settingsValue.llm;
+    await sendMessage({
+      type: "SAVE_SETTINGS",
+      settings: {
+        ...settingsValue,
+        llm: {
+          ...savedLlm,
+          lookupPromptTemplate: isDefaultPromptTemplate(
+            "lookup",
+            savedLlm.lookupPromptTemplate,
+          )
+            ? getDefaultPromptTemplate("lookup", language)
+            : savedLlm.lookupPromptTemplate,
+          translationPromptTemplate: isDefaultPromptTemplate(
+            "translation",
+            savedLlm.translationPromptTemplate,
+          )
+            ? getDefaultPromptTemplate("translation", language)
+            : savedLlm.translationPromptTemplate,
+        },
+        ui: settings.ui,
+      },
+    });
+    await chrome.storage.local.set({
+      globalEnabled,
+      disabledSites: disabledSitesText
+        .split("\n")
+        .map((site) => site.trim().toLowerCase())
+        .filter(Boolean),
+    });
+    await onChange();
+    notify(t.options.notices.settingsSaved);
+  }
+
+  async function saveLlmSettings() {
     const invalidPromptTemplate = (
       [
         ["lookup", settings.llm.lookupPromptTemplate],
@@ -3626,13 +3732,9 @@ function SettingsTab({
     }
 
     setPromptTemplateError("");
-    await sendMessage({ type: "SAVE_SETTINGS", settings });
-    await chrome.storage.local.set({
-      globalEnabled,
-      disabledSites: disabledSitesText
-        .split("\n")
-        .map((site) => site.trim().toLowerCase())
-        .filter(Boolean),
+    await sendMessage({
+      type: "SAVE_SETTINGS",
+      settings: { ...settingsValue, llm: settings.llm },
     });
     await onChange();
     notify(t.options.notices.settingsSaved);
@@ -3648,6 +3750,7 @@ function SettingsTab({
     };
     await sendMessage({ type: "IMPORT_SNAPSHOT", snapshot: parsed });
     await onChange();
+    setSettings(await sendMessage<AppSettings>({ type: "GET_SETTINGS" }));
   }
 
   function updateLanguage(language: AppSettings["ui"]["language"]) {
@@ -3676,6 +3779,7 @@ function SettingsTab({
 
   function updateLlmProvider(providerValue: string) {
     const provider = normalizeLlmProvider(providerValue);
+    setAvailableModels([]);
     setSettings({
       ...settings,
       llm: {
@@ -3691,6 +3795,9 @@ function SettingsTab({
       provider,
       settings.llm.providers[provider],
     );
+    if ("baseUrl" in updates || "apiKey" in updates) {
+      setAvailableModels([]);
+    }
     setSettings({
       ...settings,
       llm: {
@@ -3748,7 +3855,10 @@ function SettingsTab({
 
     setIsTestingLlm(true);
     try {
-      await sendMessage({ type: "TEST_LLM_CONNECTION", settings });
+      await sendMessage({
+        type: "TEST_LLM_CONNECTION",
+        settings: { ...settingsValue, llm: settings.llm },
+      });
       notify(t.options.notices.llmConnectionSucceeded);
     } catch (error) {
       notify(
@@ -3760,6 +3870,72 @@ function SettingsTab({
       );
     } finally {
       setIsTestingLlm(false);
+    }
+  }
+
+  async function fetchLlmModels({ silent = false } = {}) {
+    if (fetchingModelsRef.current) return;
+
+    const llm = getEffectiveLlmConfig(settings.llm);
+    const missingFields = [
+      [llm.provider, t.options.settings.provider],
+      [llm.baseUrl, t.options.settings.baseUrl],
+      [llm.apiKey, t.options.settings.apiKey],
+    ]
+      .filter(([value]) => !value.trim())
+      .map(([, label]) => label);
+
+    if (missingFields.length > 0) {
+      if (!silent) {
+        notify(
+          interpolate(t.options.errors.modelListConfigRequired, {
+            fields: missingFields.join(", "),
+          }),
+          "error",
+          LLM_TEST_ERROR_TOAST_DURATION_MS,
+        );
+      }
+      return;
+    }
+
+    fetchingModelsRef.current = true;
+    if (!silent) setIsFetchingModels(true);
+    try {
+      const models = await sendMessage<string[]>({
+        type: "GET_LLM_MODELS",
+        settings: { ...settingsValue, llm: settings.llm },
+      });
+      if (models.length === 0) {
+        if (!silent) {
+          notify(
+            t.options.errors.modelListEmpty,
+            "error",
+            LLM_TEST_ERROR_TOAST_DURATION_MS,
+          );
+        }
+        return;
+      }
+      setAvailableModels(models);
+      if (!silent) {
+        notify(
+          interpolate(t.options.notices.modelsFetched, {
+            count: String(models.length),
+          }),
+        );
+      }
+    } catch (error) {
+      if (!silent) {
+        notify(
+          interpolate(t.options.errors.modelListFetchFailed, {
+            reason: formatError(error),
+          }),
+          "error",
+          LLM_TEST_ERROR_TOAST_DURATION_MS,
+        );
+      }
+    } finally {
+      fetchingModelsRef.current = false;
+      if (!silent) setIsFetchingModels(false);
     }
   }
 
@@ -3810,45 +3986,123 @@ function SettingsTab({
           </IconButton>
         </Paper>
       )}
-      <Typography variant="h6">{t.options.settings.language}</Typography>
-      <TextField
-        select
-        label={t.options.settings.language}
-        value={settings.ui.language}
-        helperText={t.options.settings.languageHelp}
-        onChange={(event) =>
-          updateLanguage(event.target.value as AppSettings["ui"]["language"])
-        }
-      >
-        {LANGUAGE_OPTIONS.map((language) => (
-          <MenuItem key={language.value} value={language.value}>
-            {language.label}
-          </MenuItem>
-        ))}
-      </TextField>
-
-      <Box>
-        <Stack
-          direction="row"
-          alignItems="center"
-          justifyContent="space-between"
-          spacing={2}
-        >
-          <Typography variant="h6">{t.options.settings.llm}</Typography>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<FlaskConical size={12} />}
-            disabled={isTestingLlm}
-            onClick={() => void testLlmConnection()}
+      <Paper component="section" variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+        <Stack spacing={3}>
+          <Typography variant="h6">{t.options.settings.preferences}</Typography>
+          <SettingsField
+            label={t.options.settings.language}
+            inputId="settings-language"
           >
-            {isTestingLlm ? t.options.actions.testing : t.options.actions.test}
-          </Button>
+            <TextField
+              id="settings-language"
+              select
+              value={settings.ui.language}
+              helperText={t.options.settings.languageHelp}
+              onChange={(event) =>
+                updateLanguage(
+                  event.target.value as AppSettings["ui"]["language"],
+                )
+              }
+            >
+              {LANGUAGE_OPTIONS.map((language) => (
+                <MenuItem key={language.value} value={language.value}>
+                  {language.label}
+                </MenuItem>
+              ))}
+            </TextField>
+          </SettingsField>
+          <SettingsField
+            label={t.options.settings.recordsPageSize}
+            inputId="settings-page-size"
+          >
+            <TextField
+              id="settings-page-size"
+              select
+              value={settings.ui.recordsPageSize}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  ui: {
+                    ...settings.ui,
+                    recordsPageSize: normalizeRecordsPageSize(
+                      Number(event.target.value),
+                    ),
+                  },
+                })
+              }
+            >
+              {RECORDS_PAGE_SIZE_OPTIONS.map((pageSize) => (
+                <MenuItem key={pageSize} value={pageSize}>
+                  {pageSize}
+                </MenuItem>
+              ))}
+            </TextField>
+          </SettingsField>
+          <SettingsField
+            label={t.options.settings.defaultHighlightColor}
+            inputId="settings-highlight-color"
+          >
+            <TextField
+              id="settings-highlight-color"
+              select
+              value={settings.ui.defaultHighlightColor}
+              slotProps={{
+                select: {
+                  renderValue: (value) => (
+                    <HighlightColorPreview color={value as HighlightColor} />
+                  ),
+                },
+              }}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  ui: {
+                    ...settings.ui,
+                    defaultHighlightColor: event.target
+                      .value as AppSettings["ui"]["defaultHighlightColor"],
+                  },
+                })
+              }
+            >
+              {HIGHLIGHT_COLOR_OPTIONS.map((color) => (
+                <MenuItem key={color} value={color}>
+                  <HighlightColorPreview color={color} />
+                </MenuItem>
+              ))}
+            </TextField>
+          </SettingsField>
+          <SettingsField
+            label={t.options.settings.disabledSites}
+            inputId="settings-disabled-sites"
+          >
+            <TextField
+              id="settings-disabled-sites"
+              value={disabledSitesText}
+              onChange={(event) => setDisabledSitesText(event.target.value)}
+              multiline
+              minRows={4}
+              helperText={t.options.settings.disabledSitesHelp}
+            />
+          </SettingsField>
+          <Stack direction="row" justifyContent="flex-end">
+            <Button
+              variant="contained"
+              onClick={() => void runAction(savePreferences)}
+            >
+              {t.options.actions.saveSettings}
+            </Button>
+          </Stack>
         </Stack>
+      </Paper>
+
+      <Paper component="section" variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+        <Stack spacing={3}>
+          <Box>
+          <Typography variant="h6">{t.options.settings.llm}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
           {t.options.settings.llmCostNotice}
         </Typography>
-      </Box>
+          </Box>
       {showOnboarding && (
         <Paper
           variant="outlined"
@@ -3893,97 +4147,205 @@ function SettingsTab({
           </Stack>
         </Paper>
       )}
-      <TextField
-        select
+      <SettingsField
         label={t.options.settings.provider}
-        value={settings.llm.provider}
-        helperText={t.options.settings.providerHelp}
-        onChange={(event) => updateLlmProvider(event.target.value)}
-        SelectProps={{
-          renderValue: (value) => {
-            const provider = normalizeLlmProvider(value);
-            const preset = getLlmProviderPreset(provider);
-            return provider === "custom"
-              ? t.options.settings.customProvider
-              : preset.label;
-          },
+        inputId="settings-llm-provider"
+      >
+        <TextField
+          id="settings-llm-provider"
+          select
+          value={settings.llm.provider}
+          helperText={t.options.settings.providerHelp}
+          onChange={(event) => updateLlmProvider(event.target.value)}
+          SelectProps={{
+            renderValue: (value) => {
+              const provider = normalizeLlmProvider(value);
+              const preset = getLlmProviderPreset(provider);
+              return provider === "custom"
+                ? t.options.settings.customProvider
+                : preset.label;
+            },
+          }}
+        >
+          {LLM_PROVIDER_PRESETS.map((preset) => (
+            <MenuItem
+              key={preset.value}
+              value={preset.value}
+              sx={{ alignItems: "flex-start", py: 1 }}
+            >
+              <Stack spacing={0.25}>
+                <Typography variant="body2">
+                  {preset.value === "custom"
+                    ? t.options.settings.customProvider
+                    : preset.label}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ lineHeight: 1.35, whiteSpace: "normal" }}
+                >
+                  {t.options.settings.providerDescriptions[preset.value]}
+                </Typography>
+              </Stack>
+            </MenuItem>
+          ))}
+        </TextField>
+      </SettingsField>
+      <SettingsField
+        label={t.options.settings.baseUrl}
+        inputId="settings-llm-base-url"
+      >
+        <TextField
+          id="settings-llm-base-url"
+          value={
+            isCustomLlmProvider
+              ? activeLlmProviderConfig.baseUrl
+              : activeLlmProviderPreset.baseUrl
+          }
+          disabled={!isCustomLlmProvider}
+          onChange={(event) =>
+            updateActiveLlmProviderConfig({ baseUrl: event.target.value })
+          }
+        />
+      </SettingsField>
+      <SettingsField
+        label={t.options.settings.apiKey}
+        inputId="settings-llm-api-key"
+      >
+        <TextField
+          id="settings-llm-api-key"
+          type="password"
+          value={activeLlmProviderConfig.apiKey}
+          helperText={t.options.settings.apiKeyHelp}
+          onChange={(event) =>
+            updateActiveLlmProviderConfig({ apiKey: event.target.value })
+          }
+          onBlur={(event) => {
+            if (
+              (event.relatedTarget as HTMLElement | null)?.id ===
+              "settings-fetch-models"
+            ) {
+              return;
+            }
+            void fetchLlmModels({ silent: true });
+          }}
+        />
+      </SettingsField>
+      <SettingsField
+        label={t.options.settings.model}
+        inputId="settings-llm-model"
+        labelAction={
+          <Button
+            id="settings-fetch-models"
+            variant="text"
+            size="small"
+            disabled={isFetchingModels}
+            onClick={() => void fetchLlmModels()}
+            sx={{ minWidth: "auto", px: 0.5, py: 0 }}
+          >
+            {isFetchingModels
+              ? t.options.actions.fetchingModels
+              : t.options.actions.fetchModels}
+          </Button>
+        }
+      >
+        <Autocomplete
+          freeSolo
+          options={availableModels}
+          value={activeLlmProviderConfig.model || null}
+          inputValue={activeLlmProviderConfig.model}
+          loading={isFetchingModels}
+          loadingText={t.options.actions.fetchingModels}
+          onChange={(_event, value) =>
+            updateActiveLlmProviderConfig({ model: value ?? "" })
+          }
+          onInputChange={(_event, value) =>
+            updateActiveLlmProviderConfig({ model: value })
+          }
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              id="settings-llm-model"
+              inputProps={{
+                ...params.inputProps,
+                id: "settings-llm-model",
+              }}
+              helperText={t.options.settings.modelHelp}
+            />
+          )}
+        />
+      </SettingsField>
+      <Accordion
+        disableGutters
+        elevation={0}
+        slotProps={{ heading: { component: "h3" } }}
+        sx={{
+          border: "1px solid",
+          borderColor: "divider",
+          borderRadius: "8px !important",
+          "&::before": { display: "none" },
         }}
       >
-        {LLM_PROVIDER_PRESETS.map((preset) => (
-          <MenuItem
-            key={preset.value}
-            value={preset.value}
-            sx={{ alignItems: "flex-start", py: 1 }}
+        <AccordionSummary
+          expandIcon={<ChevronDown size={18} />}
+          aria-controls="settings-llm-advanced-content"
+          id="settings-llm-advanced-header"
+          sx={{ px: 2, minHeight: 48 }}
+        >
+          <Typography fontWeight={600} variant="body2">
+            {t.options.settings.advanced}
+          </Typography>
+        </AccordionSummary>
+        <AccordionDetails
+          id="settings-llm-advanced-content"
+          sx={{ px: 2, pt: 0.5, pb: 2 }}
+        >
+          <Stack spacing={2.5}>
+      <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5}>
+        <Box sx={{ flex: 1 }}>
+          <SettingsField
+            label={t.options.settings.temperature}
+            inputId="settings-llm-temperature"
           >
-            <Stack spacing={0.25}>
-              <Typography variant="body2">
-                {preset.value === "custom"
-                  ? t.options.settings.customProvider
-                  : preset.label}
-              </Typography>
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{ lineHeight: 1.35, whiteSpace: "normal" }}
-              >
-                {t.options.settings.providerDescriptions[preset.value]}
-              </Typography>
-            </Stack>
-          </MenuItem>
-        ))}
-      </TextField>
-      <TextField
-        label={t.options.settings.baseUrl}
-        value={
-          isCustomLlmProvider
-            ? activeLlmProviderConfig.baseUrl
-            : activeLlmProviderPreset.baseUrl
-        }
-        disabled={!isCustomLlmProvider}
-        onChange={(event) =>
-          updateActiveLlmProviderConfig({ baseUrl: event.target.value })
-        }
-      />
-      <TextField
-        label={t.options.settings.apiKey}
-        type="password"
-        value={activeLlmProviderConfig.apiKey}
-        helperText={t.options.settings.apiKeyHelp}
-        onChange={(event) =>
-          updateActiveLlmProviderConfig({ apiKey: event.target.value })
-        }
-      />
-      <TextField
-        label={t.options.settings.model}
-        value={activeLlmProviderConfig.model}
-        helperText={t.options.settings.modelHelp}
-        onChange={(event) =>
-          updateActiveLlmProviderConfig({ model: event.target.value })
-        }
-      />
-      <Stack direction="row" spacing={2}>
-        <TextField
-          label={t.options.settings.temperature}
-          type="number"
-          value={settings.llm.temperature}
-          onChange={(event) =>
-            setSettings({
-              ...settings,
-              llm: { ...settings.llm, temperature: Number(event.target.value) },
-            })
-          }
-        />
-        <TextField
-          label={t.options.settings.timeoutMs}
-          type="number"
-          value={settings.llm.timeoutMs}
-          onChange={(event) =>
-            setSettings({
-              ...settings,
-              llm: { ...settings.llm, timeoutMs: Number(event.target.value) },
-            })
-          }
-        />
+            <TextField
+              id="settings-llm-temperature"
+              type="number"
+              value={settings.llm.temperature}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  llm: {
+                    ...settings.llm,
+                    temperature: Number(event.target.value),
+                  },
+                })
+              }
+              fullWidth
+            />
+          </SettingsField>
+        </Box>
+        <Box sx={{ flex: 1 }}>
+          <SettingsField
+            label={t.options.settings.timeoutMs}
+            inputId="settings-llm-timeout"
+          >
+            <TextField
+              id="settings-llm-timeout"
+              type="number"
+              value={settings.llm.timeoutMs}
+              onChange={(event) =>
+                setSettings({
+                  ...settings,
+                  llm: {
+                    ...settings.llm,
+                    timeoutMs: Number(event.target.value),
+                  },
+                })
+              }
+              fullWidth
+            />
+          </SettingsField>
+        </Box>
       </Stack>
       <Stack spacing={0}>
         <Box sx={{ mb: "20px" }}>
@@ -4016,23 +4378,28 @@ function SettingsTab({
             />
           </Tabs>
         </Box>
-        <TextField
+        <SettingsField
           label={t.options.settings.promptTemplate}
-          value={activePromptTemplate}
-          onChange={(event) => {
-            setPromptTemplateError("");
-            setSettings({
-              ...settings,
-              llm: {
-                ...settings.llm,
-                [promptTemplateKey]: event.target.value,
-              },
-            });
-          }}
-          multiline
-          minRows={12}
-          error={Boolean(promptTemplateError)}
-        />
+          inputId="settings-prompt-template"
+        >
+          <TextField
+            id="settings-prompt-template"
+            value={activePromptTemplate}
+            onChange={(event) => {
+              setPromptTemplateError("");
+              setSettings({
+                ...settings,
+                llm: {
+                  ...settings.llm,
+                  [promptTemplateKey]: event.target.value,
+                },
+              });
+            }}
+            multiline
+            minRows={12}
+            error={Boolean(promptTemplateError)}
+          />
+        </SettingsField>
         <Box
           sx={{
             pt: 0.75,
@@ -4060,82 +4427,32 @@ function SettingsTab({
           </Button>
         </Box>
       </Stack>
+          </Stack>
+        </AccordionDetails>
+      </Accordion>
 
-      <Typography variant="h6">{t.options.settings.pronunciation}</Typography>
-      <TextField
-        label={t.options.settings.merriamWebsterApiKey}
-        type="password"
-        value={settings.pronunciation.merriamWebsterApiKey}
-        onChange={(event) =>
-          setSettings({
-            ...settings,
-            pronunciation: {
-              ...settings.pronunciation,
-              merriamWebsterApiKey: event.target.value,
-            },
-          })
-        }
-      />
+          <Stack direction="row" justifyContent="flex-end" spacing={1}>
+            <Button
+              variant="outlined"
+              startIcon={<FlaskConical size={14} />}
+              disabled={isTestingLlm}
+              onClick={() => void testLlmConnection()}
+            >
+              {isTestingLlm ? t.options.actions.testing : t.options.actions.test}
+            </Button>
+            <Button
+              variant="contained"
+              onClick={() => void runAction(saveLlmSettings)}
+            >
+              {t.options.actions.saveSettings}
+            </Button>
+          </Stack>
+        </Stack>
+      </Paper>
 
-      <Typography variant="h6">{t.options.settings.preferences}</Typography>
-      <Stack spacing={1.75}>
-        <TextField
-          select
-          label={t.options.settings.recordsPageSize}
-          value={settings.ui.recordsPageSize}
-          onChange={(event) =>
-            setSettings({
-              ...settings,
-              ui: {
-                ...settings.ui,
-                recordsPageSize: normalizeRecordsPageSize(
-                  Number(event.target.value),
-                ),
-              },
-            })
-          }
-        >
-          {RECORDS_PAGE_SIZE_OPTIONS.map((pageSize) => (
-            <MenuItem key={pageSize} value={pageSize}>
-              {pageSize}
-            </MenuItem>
-          ))}
-        </TextField>
-        <TextField
-          select
-          label={t.options.settings.defaultHighlightColor}
-          value={settings.ui.defaultHighlightColor}
-          onChange={(event) =>
-            setSettings({
-              ...settings,
-              ui: {
-                ...settings.ui,
-                defaultHighlightColor: event.target
-                  .value as AppSettings["ui"]["defaultHighlightColor"],
-              },
-            })
-          }
-        >
-          {["yellow", "green", "blue", "pink", "purple"].map((color) => (
-            <MenuItem key={color} value={color}>
-              {color}
-            </MenuItem>
-          ))}
-        </TextField>
-      </Stack>
-      <TextField
-        label={t.options.settings.disabledSites}
-        value={disabledSitesText}
-        onChange={(event) => setDisabledSitesText(event.target.value)}
-        multiline
-        minRows={4}
-        helperText={t.options.settings.disabledSitesHelp}
-      />
-      <Button variant="contained" onClick={() => void runAction(saveSettings)}>
-        {t.options.actions.saveSettings}
-      </Button>
-
-      <Typography variant="h6">{t.options.settings.importExport}</Typography>
+      <Paper component="section" variant="outlined" sx={{ p: 2.5, borderRadius: 2 }}>
+        <Stack spacing={3}>
+          <Typography variant="h6">{t.options.settings.importExport}</Typography>
       <FormControlLabel
         control={
           <Checkbox
@@ -4145,7 +4462,7 @@ function SettingsTab({
         }
         label={t.options.settings.includeSensitiveConfig}
       />
-      <Stack direction="row" spacing={1} flexWrap="wrap">
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <Button
           startIcon={<Download size={16} />}
           onClick={() =>
@@ -4216,7 +4533,9 @@ function SettingsTab({
             }}
           />
         </Button>
-      </Stack>
+          </Stack>
+        </Stack>
+      </Paper>
     </Stack>
   );
 }
@@ -4317,27 +4636,6 @@ function getMissingPromptVariables(promptTemplate: string): string[] {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : "Operation failed.";
-}
-
-async function speakWord(
-  word: string,
-  language: AppSettings["ui"]["language"] = "en",
-): Promise<void> {
-  const response = await sendMessage<PronunciationResult>({
-    type: "GET_PRONUNCIATION",
-    word,
-    language,
-  });
-
-  if (response.audioDataUrl || response.audioUrl) {
-    await new Audio(response.audioDataUrl ?? response.audioUrl).play();
-    return;
-  }
-
-  speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(word);
-  utterance.lang = response.language;
-  speechSynthesis.speak(utterance);
 }
 
 function sendMessage<T>(message: RuntimeMessage): Promise<T> {

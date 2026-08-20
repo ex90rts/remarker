@@ -136,6 +136,8 @@ export const zhTW: Messages = {
       restoreDefault: "恢復預設",
       test: "測試",
       testing: "測試中…",
+      fetchModels: "取得模型",
+      fetchingModels: "取得中…",
     },
     confirmations: {
       archiveFootprint: "歸檔這條足跡？歸檔後將不再顯示於目前列表。",
@@ -144,7 +146,7 @@ export const zhTW: Messages = {
       deleteTranslation: "刪除這條翻譯？",
     },
     settings: {
-      llm: "大型語言模型",
+      llm: "大型語言模型設定 - BYOK 模式",
       llmCostNotice:
         "注意：呼叫大型語言模型翻譯或查詞可能產生費用，由所選模型廠商決定和收取，請妥善設定並保存 Key 資訊。",
       llmOnboardingNotice: "查詞與翻譯功能需要 LLM 支援，請先設定",
@@ -166,9 +168,11 @@ export const zhTW: Messages = {
       },
       baseUrl: "Base URL",
       apiKey: "API Key",
-      apiKeyHelp: "本設定資訊僅會保存到本機瀏覽器。",
+      apiKeyHelp: "本設定資訊僅會儲存在你的瀏覽器本機。",
       model: "模型",
-      modelHelp: "建議選用 Flash 或類似類型的模型以加快回應速度。",
+      modelHelp:
+        "可以先取得模型後選擇，也可以自行輸入；建議選用 Flash 或類似模型以加快回應速度。",
+      advanced: "進階配置",
       temperature: "Temperature",
       timeoutMs: "逾時時間 ms",
       promptTemplate: "提示詞模板",
@@ -183,11 +187,9 @@ export const zhTW: Messages = {
       language: "語言",
       languageHelp:
         "所選語言為介面語言，同時為大型語言模型翻譯的目標語言，建議開始使用時確定好之後就不要再修改。",
-      pronunciation: "發音",
-      merriamWebsterApiKey: "Merriam-Webster API Key",
-      preferences: "偏好",
+      preferences: "使用偏好",
       enableExtensionGlobally: "啟用全域頁面標記",
-      recordsPageSize: "標記和生字表每頁數量",
+      recordsPageSize: "列表每頁記錄數",
       defaultHighlightColor: "預設標記顏色",
       disabledSites: "停用站點",
       disabledSitesHelp: "每行一個 hostname，例如：example.com",
@@ -212,11 +214,15 @@ export const zhTW: Messages = {
       promptRestored: "已恢復預設提示詞。",
       pronunciationStarted: "已開始播放發音。",
       llmConnectionSucceeded: "LLM 連線測試成功。",
+      modelsFetched: "已取得 {{count}} 個模型。",
     },
     errors: {
       promptTemplateMissingVariables: "提示詞模板缺少必要變數：{{variables}}",
       llmConfigRequired: "必須填寫：{{fields}}。",
       llmConnectionFailed: "LLM 連線測試失敗：{{reason}}",
+      modelListConfigRequired: "請先設定：{{fields}}。",
+      modelListEmpty: "介面未回傳可用模型，請確認目前帳號擁有模型存取權限。",
+      modelListFetchFailed: "取得模型失敗：{{reason}}",
     },
     statusDescriptions: {
       active: "這條標記已在來源頁面恢復。",
@@ -233,6 +239,13 @@ export const zhTW: Messages = {
     about: {
       releases: {
         title: "Releases",
+        v1_3: {
+          version: "1.3.0",
+          summary: "優化設定功能及其他細節。",
+          feature1: "優化設定介面 UI，大型語言模型設定新增取得模型功能。",
+          feature2: "在頁面選取文字後，可直接透過新增筆記進行標記。",
+          feature3: "更換英文單字發音的資料來源，提升穩定性。",
+        },
         v1_2_1: {
           version: "1.2.1",
           summary: "已知問題修正與小幅優化。",
@@ -265,7 +278,7 @@ export const zhTW: Messages = {
           feature2: "呼叫 AI 大型語言模型解釋選中的生字，並自動保存到生字表。",
           feature3:
             "再次訪問頁面時自動恢復之前的標記和生字底線，並可查看生字翻譯。",
-          feature4: "支援生字發音，優先使用詞典音訊，並提供瀏覽器語音兜底。",
+          feature4: "使用本機快取的有道音訊播放英語單字發音。",
           feature5: "支援關鍵學習資料匯入匯出，便於備份、複習和遷移。",
         },
       },

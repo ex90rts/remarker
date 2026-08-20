@@ -70,7 +70,6 @@ describe("export helpers", () => {
             gemini: { apiKey: "gemini-secret" }
           }
         },
-        pronunciation: { merriamWebsterApiKey: "dict-secret" }
       },
       footprints: [footprint],
       highlights: [highlight],
@@ -121,14 +120,12 @@ describe("export helpers", () => {
     const json = createIncrementalBackupJson({
       settings: {
         llm: { providers: { custom: { apiKey: "incremental-secret" } } },
-        pronunciation: { merriamWebsterApiKey: "dictionary-secret" },
       },
       footprints: [],
       highlights: [],
       vocabulary: [],
     });
     expect(json).not.toContain("incremental-secret");
-    expect(json).not.toContain("dictionary-secret");
   });
 
   it("creates Obsidian vocabulary markdown", () => {

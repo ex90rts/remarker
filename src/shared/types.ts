@@ -146,10 +146,6 @@ export interface LlmConfig {
 
 export type PromptTemplateType = "lookup" | "translation";
 
-export interface PronunciationConfig {
-  merriamWebsterApiKey: string;
-}
-
 export interface ExportSettings {
   lastIncrementalExportAt?: string;
 }
@@ -163,7 +159,6 @@ export interface UiPreferences {
 
 export interface AppSettings {
   llm: LlmConfig;
-  pronunciation: PronunciationConfig;
   ui: UiPreferences;
   export: ExportSettings;
 }
@@ -207,7 +202,7 @@ export interface AudioCacheRecord {
   key: string;
   language: string;
   normalizedWord: string;
-  provider: "merriam-webster" | "free-dictionary";
+  provider: "youdao";
   mimeType?: string;
   audioBlob?: Blob;
   audioUrl?: string;
@@ -222,23 +217,17 @@ export interface StartupCache {
   schemaVersion: number;
 }
 
-const LEGACY_DEFAULT_PROMPT_TEMPLATE_EN =
-  "You are a knowledgeable, trend-savvy linguist. Below, you'll help a reader complete the following task.\n\nTask:\n{{task}}\n\nSelection:\n{{selection}}\n\nContext:\n{{context}}\n\nRequirements:\n- The language used in the response must match the target language specified in the task.\n- If the task is translation, complete the translation of the selected content based on context, then provide a context-based analysis along with high-frequency vocabulary and common phrase extraction. The returned content must follow this exact order with no extraneous content: Best Translation, Context Analysis, High-Frequency Vocabulary and Common Phrases.\n- If the task is word lookup, determine the best meaning of the selected content based on context analysis, then provide a context-based analysis along with common usage expansion. The returned content must follow this exact order with no extraneous content: Current Meaning, Context Analysis, Additional Meanings, Common Usage and Example Sentences.\n- The returned content must be in Markdown source format.";
-
-const LEGACY_DEFAULT_PROMPT_TEMPLATE_ZH_CN =
-  "你是一位知识丰富、熟悉流行表达的语言学专家。接下来请帮助读者完成以下任务。\n\n任务：\n{{task}}\n\n选中内容：\n{{selection}}\n\n上下文：\n{{context}}\n\n要求：\n- 回复语言必须符合任务中指定的目标语言。\n- 如果任务是翻译，请结合上下文完整翻译选中内容，然后给出基于上下文的解析，并提取高频词汇和常用短语。返回内容必须严格按以下顺序组织，不要添加无关内容：最佳翻译、上下文解析、高频词汇和常用短语。\n- 如果任务是查词，请结合上下文判断选中内容在当前语境中的最佳含义，然后给出基于上下文的解析，并补充常见用法扩展。返回内容必须严格按以下顺序组织，不要添加无关内容：当前含义、上下文解析、其他含义、常见用法和例句。\n- 返回内容必须是 Markdown 源码格式。";
-
 const DEFAULT_LOOKUP_PROMPT_TEMPLATE_EN =
-  "You are a knowledgeable, trend-savvy linguist. Explain the selected word in context.\n\nSelection:\n{{selection}}\n\nContext:\n{{context}}\n\nRequirements:\n- Infer the source language from the context; default to English when uncertain.\n- Determine the best meaning of the selected word based on the context, then provide a context-based analysis and expand on common usage.\n- Return content in this exact order with no extraneous content: Current Meaning, Context Analysis, Additional Meanings, Common Usage and Example Sentences.\n- The returned content must be in Markdown source format, but do not wrap it in triple backticks.";
+  "You are a knowledgeable, trend-savvy linguist. Following the requirements below, explain the selected word in context.\n\nRequirements:\n- Infer the source language from the context; default to English when uncertain.\n- Determine the best meaning of the selected word in the current context, then provide a context-based analysis and supplement it with other common meanings and expanded usage.\n- Return content in this exact order with no extraneous content: Current Meaning, Context Analysis, Additional Meanings, Common Usage and Example Sentences.\n- The returned content must be in Markdown source format.\n\nSelected Word:\n{{selection}}\n\nContext:\n{{context}}";
 
 const DEFAULT_TRANSLATION_PROMPT_TEMPLATE_EN =
-  "You are a knowledgeable, trend-savvy linguist. Translate the selected text according to its context.\n\nSelection:\n{{selection}}\n\nContext:\n{{context}}\n\nRequirements:\n- Infer the source language from the context; default to English when uncertain.\n- Translate the selected content completely based on the context, then provide a context-based analysis and extract high-frequency vocabulary and common phrases.\n- Return content in this exact order with no extraneous content: Best Translation, Context Analysis, High-Frequency Vocabulary and Common Phrases.\n- The returned content must be in Markdown source format, but do not wrap it in triple backticks.";
+  "You are a knowledgeable, trend-savvy linguist. Following the requirements below, translate the selected content in context.\n\nRequirements:\n- Infer the source language from the context; default to English when uncertain.\n- Translate the selected content completely based on the context, then provide a context-based analysis and extract high-frequency vocabulary and common phrases.\n- Return content in this exact order with no extraneous content: Best Translation, Context Analysis, High-Frequency Vocabulary and Common Phrases.\n- The returned content must be in Markdown source format.\n\nSelected Content:\n{{selection}}\n\nContext:\n{{context}}";
 
 const DEFAULT_LOOKUP_PROMPT_TEMPLATE_ZH_CN =
-  "你是一位知识丰富、熟悉流行表达的语言学专家。请结合上下文解释选中的词语。\n\n选中内容：\n{{selection}}\n\n上下文：\n{{context}}\n\n要求：\n- 从上下文推断源语言，无法确定时默认按英语处理。\n- 结合上下文判断选中词语在当前语境中的最佳含义，然后给出基于上下文的解析，并补充常见用法扩展。\n- 返回内容必须严格按以下顺序组织，不要添加无关内容：当前含义、上下文解析、其他含义、常见用法和例句。\n- 返回内容必须是 Markdown 源码格式，但不要在外层包裹 ``` 符号。";
+  "你是一位知识丰富、熟悉流行表达的语言学专家，请根据要求结合上下文解释选中的词语。\n\n要求：\n- 从上下文推断源语言，无法确定时默认按英语处理。\n- 结合上下文判断选中词语在当前语境中的最佳含义，然后给出基于上下文的解析，并补充常见其他含义和用法扩展。\n- 返回内容必须严格按以下顺序组织，不要添加无关内容：当前含义、上下文解析、其他含义、常见用法和例句。\n- 返回内容必须是 Markdown 源码格式。\n\n选中词语：\n{{selection}}\n\n上下文：\n{{context}}";
 
 const DEFAULT_TRANSLATION_PROMPT_TEMPLATE_ZH_CN =
-  "你是一位知识丰富、熟悉流行表达的语言学专家。请结合上下文翻译选中的文本。\n\n选中内容：\n{{selection}}\n\n上下文：\n{{context}}\n\n要求：\n- 从上下文推断源语言，无法确定时默认按英语处理。\n- 结合上下文完整翻译选中内容，然后给出基于上下文的解析，并提取高频词汇和常用短语。\n- 返回内容必须严格按以下顺序组织，不要添加无关内容：最佳翻译、上下文解析、高频词汇和常用短语。\n- 返回内容必须是 Markdown 源码格式，但不要在外层包裹 ``` 符号。";
+  "你是一位知识丰富、熟悉流行表达的语言学专家，请根据要求结合上下文翻译选中内容。\n\n要求：\n- 从上下文推断源语言，无法确定时默认按英语处理。\n- 结合上下文完整翻译选中内容，然后给出基于上下文的解析，并提取高频词汇和常用短语。\n- 返回内容必须严格按以下顺序组织，不要添加无关内容：最佳翻译、上下文解析、高频词汇和常用短语。\n- 返回内容必须是 Markdown 源码格式。\n\n选中内容：\n{{selection}}\n\n上下文：\n{{context}}";
 
 function shouldUseChineseDefaultPrompt(language?: SupportedLanguage): boolean {
   return language === "zh-CN" || language === "zh-TW";
@@ -266,31 +255,6 @@ export function isDefaultPromptTemplate(
     getDefaultPromptTemplate(type, "en"),
     getDefaultPromptTemplate(type, "zh-CN"),
   ].includes(promptTemplate);
-}
-
-export function migrateLegacyPromptTemplate(
-  type: PromptTemplateType,
-  promptTemplate: string | undefined,
-  language?: SupportedLanguage,
-): string {
-  if (
-    !promptTemplate ||
-    promptTemplate === LEGACY_DEFAULT_PROMPT_TEMPLATE_EN ||
-    promptTemplate === LEGACY_DEFAULT_PROMPT_TEMPLATE_ZH_CN
-  ) {
-    return getDefaultPromptTemplate(type, language);
-  }
-
-  const usesChinese = /[\p{Script=Han}]/u.test(promptTemplate);
-  const task =
-    type === "lookup"
-      ? usesChinese
-        ? "结合上下文解释选中的词语。"
-        : "Explain the selected word in context."
-      : usesChinese
-        ? "结合上下文翻译选中的文本。"
-        : "Translate the selected text according to its context.";
-  return promptTemplate.replaceAll("{{task}}", task);
 }
 
 export function getPromptTemplateForSelectionKind(
@@ -370,9 +334,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     timeoutMs: 30000,
     lookupPromptTemplate: getDefaultPromptTemplate("lookup", "en"),
     translationPromptTemplate: getDefaultPromptTemplate("translation", "en"),
-  },
-  pronunciation: {
-    merriamWebsterApiKey: "",
   },
   ui: {
     defaultHighlightColor: "yellow",

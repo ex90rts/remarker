@@ -25,7 +25,6 @@ import {
   createDefaultLlmProviderConfigs,
   getDefaultPromptTemplate,
   isDefaultPromptTemplate,
-  migrateLegacyPromptTemplate,
   normalizeLlmProvider,
   normalizeLlmProviderConfig,
   normalizeRecordsPageSize
@@ -492,7 +491,6 @@ type LegacyLlmConfig = Partial<AppSettings["llm"]> & {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
-  promptTemplate?: string;
   providers?: Partial<Record<LlmProvider, Partial<LlmProviderConfig>>>;
 };
 
@@ -525,20 +523,17 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
     lookupPromptTemplate: normalizePromptTemplate(
       "lookup",
       incomingLlm?.lookupPromptTemplate,
-      incomingLlm?.promptTemplate,
       language,
     ),
     translationPromptTemplate: normalizePromptTemplate(
       "translation",
       incomingLlm?.translationPromptTemplate,
-      incomingLlm?.promptTemplate,
       language,
     ),
   };
 
   return {
     llm,
-    pronunciation: { ...DEFAULT_SETTINGS.pronunciation, ...(settings?.pronunciation ?? {}) },
     ui: {
       ...DEFAULT_SETTINGS.ui,
       language,
@@ -552,7 +547,6 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
 function normalizePromptTemplate(
   type: "lookup" | "translation",
   promptTemplate: string | undefined,
-  legacyPromptTemplate: string | undefined,
   language: AppSettings["ui"]["language"],
 ): string {
   if (promptTemplate) {
@@ -560,5 +554,5 @@ function normalizePromptTemplate(
       ? getDefaultPromptTemplate(type, language)
       : promptTemplate;
   }
-  return migrateLegacyPromptTemplate(type, legacyPromptTemplate, language);
+  return getDefaultPromptTemplate(type, language);
 }
