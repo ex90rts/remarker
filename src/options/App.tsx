@@ -144,6 +144,17 @@ type TabKey =
   | "about";
 type ToastSeverity = "success" | "error";
 
+const PROMPT_TEMPLATE_KEYS = {
+  lookup: "lookupPromptTemplate",
+  translation: "translationPromptTemplate",
+  analysis: "analysisPromptTemplate",
+} as const satisfies Record<
+  PromptTemplateType,
+  | "lookupPromptTemplate"
+  | "translationPromptTemplate"
+  | "analysisPromptTemplate"
+>;
+
 interface SourceFilterNavigation {
   tab: "highlights" | "vocabulary" | "translations";
   keyword: string;
@@ -4145,6 +4156,12 @@ function SettingsTab({
           )
             ? getDefaultPromptTemplate("translation", language)
             : savedLlm.translationPromptTemplate,
+          analysisPromptTemplate: isDefaultPromptTemplate(
+            "analysis",
+            savedLlm.analysisPromptTemplate,
+          )
+            ? getDefaultPromptTemplate("analysis", language)
+            : savedLlm.analysisPromptTemplate,
         },
         ui: settings.ui,
       },
@@ -4161,6 +4178,14 @@ function SettingsTab({
   }
 
   async function saveLlmSettings() {
+    if (!settings.llm.analysisPromptTemplate.trim()) {
+      const message = t.options.errors.promptTemplateRequired;
+      setPromptTemplateType("analysis");
+      setPromptTemplateError(message);
+      notify(message, "error");
+      return;
+    }
+
     const invalidPromptTemplate = (
       [
         ["lookup", settings.llm.lookupPromptTemplate],
@@ -4213,6 +4238,10 @@ function SettingsTab({
       "translation",
       settings.llm.translationPromptTemplate,
     );
+    const shouldUpdateAnalysisPrompt = isDefaultPromptTemplate(
+      "analysis",
+      settings.llm.analysisPromptTemplate,
+    );
     setSettings({
       ...settings,
       llm: {
@@ -4223,6 +4252,9 @@ function SettingsTab({
         translationPromptTemplate: shouldUpdateTranslationPrompt
           ? getDefaultPromptTemplate("translation", language)
           : settings.llm.translationPromptTemplate,
+        analysisPromptTemplate: shouldUpdateAnalysisPrompt
+          ? getDefaultPromptTemplate("analysis", language)
+          : settings.llm.analysisPromptTemplate,
       },
       ui: { ...settings.ui, language },
     });
@@ -4266,10 +4298,7 @@ function SettingsTab({
 
   function restoreDefaultPromptTemplate() {
     setPromptTemplateError("");
-    const promptTemplateKey =
-      promptTemplateType === "lookup"
-        ? "lookupPromptTemplate"
-        : "translationPromptTemplate";
+    const promptTemplateKey = PROMPT_TEMPLATE_KEYS[promptTemplateType];
     setSettings({
       ...settings,
       llm: {
@@ -4396,10 +4425,7 @@ function SettingsTab({
     settings.llm.providers[settings.llm.provider],
   );
   const isCustomLlmProvider = settings.llm.provider === "custom";
-  const promptTemplateKey =
-    promptTemplateType === "lookup"
-      ? "lookupPromptTemplate"
-      : "translationPromptTemplate";
+  const promptTemplateKey = PROMPT_TEMPLATE_KEYS[promptTemplateType];
   const activePromptTemplate = settings.llm[promptTemplateKey];
 
   return (
@@ -4827,6 +4853,10 @@ function SettingsTab({
               value="translation"
               label={t.options.settings.promptTemplateTypes.translation}
             />
+            <Tab
+              value="analysis"
+              label={t.options.settings.promptTemplateTypes.analysis}
+            />
           </Tabs>
         </Box>
         <SettingsField
@@ -4866,7 +4896,10 @@ function SettingsTab({
             color={promptTemplateError ? "error" : "text.secondary"}
             sx={{ flex: 1, minWidth: 0, pt: 0.25 }}
           >
-            {promptTemplateError || t.options.settings.promptTemplateHelp}
+            {promptTemplateError ||
+              (promptTemplateType === "analysis"
+                ? t.options.settings.analysisPromptTemplateHelp
+                : t.options.settings.promptTemplateHelp)}
           </Typography>
           <Button
             variant="text"

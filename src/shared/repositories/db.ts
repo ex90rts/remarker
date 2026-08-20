@@ -7,6 +7,7 @@ import type {
   LlmProvider,
   LlmProviderConfig,
   ReadingAnalysisRecord,
+  PromptTemplateType,
   SiteSetting,
   VocabularyRecord
 } from "../types";
@@ -593,6 +594,11 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
       incomingLlm?.translationPromptTemplate,
       language,
     ),
+    analysisPromptTemplate: normalizePromptTemplate(
+      "analysis",
+      incomingLlm?.analysisPromptTemplate,
+      language,
+    ),
   };
 
   return {
@@ -608,7 +614,7 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
 }
 
 function normalizePromptTemplate(
-  type: "lookup" | "translation",
+  type: PromptTemplateType,
   promptTemplate: string | undefined,
   language: AppSettings["ui"]["language"],
 ): string {

@@ -196,8 +196,10 @@ export const zhCN: Messages = {
       promptTemplateTypes: {
         lookup: "查词",
         translation: "翻译",
+        analysis: "AI 分析",
       },
       promptTemplateHelp: "可用变量：{{selection}}、{{context}}",
+      analysisPromptTemplateHelp: "AI 分析的系统提示词，无需模板变量。",
       behavior: "行为",
       autoCloseLookupPanelOnCopy: "查词弹窗复制后自动关闭",
       language: "语言",
@@ -233,6 +235,7 @@ export const zhCN: Messages = {
       modelsFetched: "已获取 {{count}} 个模型。",
     },
     errors: {
+      promptTemplateRequired: "提示词模板不能为空。",
       promptTemplateMissingVariables: "提示词模板缺少必需变量：{{variables}}",
       llmConfigRequired: "必须填写：{{fields}}。",
       llmConnectionFailed: "LLM 连接测试失败：{{reason}}",

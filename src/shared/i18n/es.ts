@@ -202,9 +202,12 @@ export const es: Messages = {
       promptTemplateTypes: {
         lookup: "Consulta de palabras",
         translation: "Traducción",
+        analysis: "Análisis con IA",
       },
       promptTemplateHelp:
         "Variables disponibles: {{selection}}, {{context}}",
+      analysisPromptTemplateHelp:
+        "Prompt del sistema para el análisis de lectura; no requiere variables de plantilla.",
       behavior: "Comportamiento",
       autoCloseLookupPanelOnCopy:
         "Cerrar automáticamente el popup de búsqueda después de copiar",
@@ -243,6 +246,7 @@ export const es: Messages = {
       modelsFetched: "Se obtuvieron {{count}} modelos.",
     },
     errors: {
+      promptTemplateRequired: "La plantilla de prompt no puede estar vacía.",
       promptTemplateMissingVariables:
         "A la plantilla de prompt le faltan variables obligatorias: {{variables}}",
       llmConfigRequired: "Configuración obligatoria: {{fields}}.",

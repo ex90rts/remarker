@@ -199,9 +199,12 @@ export const en = {
       promptTemplateTypes: {
         lookup: "Word lookup",
         translation: "Translation",
+        analysis: "AI analysis",
       },
       promptTemplateHelp:
         "Available variables: {{selection}}, {{context}}",
+      analysisPromptTemplateHelp:
+        "System prompt for reading analysis; no template variables are required.",
       behavior: "Behavior",
       autoCloseLookupPanelOnCopy:
         "Automatically close lookup popup after copying",
@@ -238,6 +241,7 @@ export const en = {
       modelsFetched: "Fetched {{count}} models.",
     },
     errors: {
+      promptTemplateRequired: "Prompt template cannot be empty.",
       promptTemplateMissingVariables:
         "Prompt template is missing required variables: {{variables}}",
       llmConfigRequired: "Required configuration: {{fields}}.",

@@ -196,8 +196,10 @@ export const zhTW: Messages = {
       promptTemplateTypes: {
         lookup: "查詞",
         translation: "翻譯",
+        analysis: "AI 分析",
       },
       promptTemplateHelp: "可用變數：{{selection}}、{{context}}",
+      analysisPromptTemplateHelp: "AI 分析的系統提示詞，無需模板變數。",
       behavior: "行為",
       autoCloseLookupPanelOnCopy: "查詞彈窗複製後自動關閉",
       language: "語言",
@@ -233,6 +235,7 @@ export const zhTW: Messages = {
       modelsFetched: "已取得 {{count}} 個模型。",
     },
     errors: {
+      promptTemplateRequired: "提示詞模板不能為空。",
       promptTemplateMissingVariables: "提示詞模板缺少必要變數：{{variables}}",
       llmConfigRequired: "必須填寫：{{fields}}。",
       llmConnectionFailed: "LLM 連線測試失敗：{{reason}}",

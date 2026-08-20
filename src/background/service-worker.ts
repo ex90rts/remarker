@@ -58,7 +58,6 @@ import {
   buildReadingAnalysisUserPrompt,
   READING_ANALYSIS_HIGHLIGHT_LIMIT,
   READING_ANALYSIS_HISTORY_LIMIT,
-  READING_ANALYSIS_SYSTEM_PROMPT,
   READING_ANALYSIS_TEMPERATURE,
 } from "../shared/reading-analysis";
 import {
@@ -540,7 +539,7 @@ async function analyzeReading(
     messages: [
       {
         role: "system",
-        content: READING_ANALYSIS_SYSTEM_PROMPT,
+        content: settings.llm.analysisPromptTemplate,
       },
       {
         role: "user",

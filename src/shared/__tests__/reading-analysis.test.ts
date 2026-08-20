@@ -3,7 +3,6 @@ import {
   buildReadingAnalysisUserPrompt,
   READING_ANALYSIS_FIELD_LIMIT,
   READING_ANALYSIS_HIGHLIGHT_LIMIT,
-  READING_ANALYSIS_SYSTEM_PROMPT,
 } from "../reading-analysis";
 import type { HighlightRecord } from "../types";
 
@@ -95,10 +94,4 @@ describe("buildReadingAnalysisUserPrompt", () => {
       );
     },
   );
-});
-
-describe("READING_ANALYSIS_SYSTEM_PROMPT", () => {
-  it("remains static and contains no output-language constraint", () => {
-    expect(READING_ANALYSIS_SYSTEM_PROMPT).not.toContain("输出语种");
-  });
 });
