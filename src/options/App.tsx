@@ -65,7 +65,14 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { MouseEvent, ReactElement, ReactNode } from "react";
 import {
   ACTIVITY_LEVEL_COLORS,
@@ -2239,6 +2246,14 @@ function ReadingAnalysisDialog({
     port: chrome.runtime.Port;
   } | undefined>(undefined);
   const hasLoadedForOpenRef = useRef(false);
+  const dialogTitleRef = useRef<HTMLHeadingElement>(null);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    // Move focus before MUI hides the background application with aria-hidden.
+    dialogTitleRef.current?.focus({ preventScroll: true });
+  }, [open]);
 
   const cancelAnalysis = (resetUi = true) => {
     const activeStream = activeStreamRef.current;
@@ -2378,7 +2393,11 @@ function ReadingAnalysisDialog({
         },
       }}
     >
-      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+      <DialogTitle
+        ref={dialogTitleRef}
+        tabIndex={-1}
+        sx={{ display: "flex", alignItems: "center", gap: 1 }}
+      >
         <Sparkles size={19} />
         {t.options.readingAnalysis.title}
       </DialogTitle>
