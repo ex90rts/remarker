@@ -9,6 +9,10 @@ import {
   Chip,
   Collapse,
   Divider,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   FormLabel,
   FormControlLabel,
   IconButton,
@@ -55,6 +59,7 @@ import {
   Settings,
   Footprints,
   Star,
+  Sparkles,
   Trash2,
   Upload,
   Volume2,
@@ -88,8 +93,14 @@ import {
 import type { Messages } from "../shared/i18n";
 import { markdownToSafeHtml } from "../shared/markdown";
 import { playPronunciation } from "../shared/pronunciation";
+import { READING_ANALYSIS_HISTORY_LIMIT } from "../shared/reading-analysis";
 import { getTodayReviewProgress } from "../shared/review";
 import type { TodayReviewProgress } from "../shared/review";
+import {
+  LLM_STREAM_PORT,
+  type LlmStreamClientMessage,
+  type LlmStreamEvent,
+} from "../shared/llm-stream";
 import type {
   DataQuery,
   ListAllDataResult,
@@ -119,6 +130,7 @@ import type {
   HighlightStatus,
   LlmProviderConfig,
   PromptTemplateType,
+  ReadingAnalysisRecord,
   RecordsPageSize,
   VocabularyRecord,
 } from "../shared/types";
@@ -1841,6 +1853,7 @@ function HighlightsTab({
   const [sourceFilter, setSourceFilter] = useState("");
   const [colorFilter, setColorFilter] = useState<HighlightColor | "">("");
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
   const [page, setPage] = useState(0);
   const query = useMemo<DataQuery>(
     () => ({
@@ -1939,6 +1952,13 @@ function HighlightsTab({
         }
         actions={
           <>
+            <Button
+              variant="contained"
+              startIcon={<Sparkles size={16} />}
+              onClick={() => setIsAnalysisOpen(true)}
+            >
+              {t.options.readingAnalysis.action}
+            </Button>
             <ExportDropdownButton
               label={t.options.actions.export}
               options={[
@@ -2173,7 +2193,438 @@ function HighlightsTab({
           </TableFooter>
         )}
       </Table>
+      <ReadingAnalysisDialog
+        open={isAnalysisOpen}
+        onClose={() => setIsAnalysisOpen(false)}
+        notify={notify}
+        runAction={runAction}
+        t={t}
+      />
     </Stack>
+  );
+}
+
+function ReadingAnalysisDialog({
+  open,
+  onClose,
+  notify,
+  runAction,
+  t,
+}: {
+  open: boolean;
+  onClose: () => void;
+  notify: Notify;
+  runAction: RunAction;
+  t: Messages;
+}) {
+  const [history, setHistory] = useState<ReadingAnalysisRecord[]>([]);
+  const [selectedId, setSelectedId] = useState<string>();
+  const [streamedResult, setStreamedResult] = useState("");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const activeStreamRef = useRef<{
+    requestId: string;
+    port: chrome.runtime.Port;
+  } | undefined>(undefined);
+  const hasLoadedForOpenRef = useRef(false);
+
+  const cancelAnalysis = (resetUi = true) => {
+    const activeStream = activeStreamRef.current;
+    if (activeStream) {
+      activeStreamRef.current = undefined;
+      activeStream.port.postMessage({
+        type: "cancel",
+        requestId: activeStream.requestId,
+      } satisfies LlmStreamClientMessage);
+      activeStream.port.disconnect();
+    }
+    if (resetUi) {
+      setIsAnalyzing(false);
+      setStreamedResult("");
+      setErrorMessage("");
+    }
+  };
+
+  const loadHistory = async () => {
+    setIsHistoryLoading(true);
+    const records = await sendMessage<ReadingAnalysisRecord[]>({
+      type: "GET_READING_ANALYSES",
+    });
+    setHistory(records);
+    setSelectedId((currentId) =>
+      currentId && records.some((record) => record.id === currentId)
+        ? currentId
+        : records[0]?.id,
+    );
+    setIsHistoryLoading(false);
+  };
+
+  const startAnalysis = () => {
+    cancelAnalysis();
+    const requestId = crypto.randomUUID();
+    const port = chrome.runtime.connect({ name: LLM_STREAM_PORT });
+    activeStreamRef.current = { requestId, port };
+    setSelectedId(undefined);
+    setStreamedResult("");
+    setErrorMessage("");
+    setIsAnalyzing(true);
+
+    port.onMessage.addListener((event: LlmStreamEvent) => {
+      if (event.requestId !== requestId) return;
+      if (event.type === "chunk") {
+        setStreamedResult((current) => current + event.content);
+        return;
+      }
+      if (event.type === "analysis-completed") {
+        activeStreamRef.current = undefined;
+        setIsAnalyzing(false);
+        setStreamedResult("");
+        setHistory((records) =>
+          [event.result, ...records.filter((record) => record.id !== event.result.id)]
+            .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+            .slice(0, READING_ANALYSIS_HISTORY_LIMIT),
+        );
+        setSelectedId(event.result.id);
+        port.disconnect();
+        return;
+      }
+      if (event.type === "error") {
+        activeStreamRef.current = undefined;
+        setIsAnalyzing(false);
+        setErrorMessage(event.error);
+        notify(
+          interpolate(t.options.readingAnalysis.failed, { reason: event.error }),
+          "error",
+        );
+        port.disconnect();
+      }
+    });
+    port.onDisconnect.addListener(() => {
+      if (activeStreamRef.current?.requestId !== requestId) return;
+      activeStreamRef.current = undefined;
+      setIsAnalyzing(false);
+      setErrorMessage(t.options.readingAnalysis.disconnected);
+    });
+    port.postMessage({
+      type: "start",
+      requestId,
+      payload: { type: "ANALYZE_READING" },
+    } satisfies LlmStreamClientMessage);
+  };
+
+  const deleteAnalysis = async (id: string) => {
+    await runAction(async () => {
+      await sendMessage({ type: "DELETE_READING_ANALYSIS", id });
+      setHistory((records) => records.filter((record) => record.id !== id));
+      setSelectedId((currentId) =>
+        currentId === id
+          ? history.find((record) => record.id !== id)?.id
+          : currentId,
+      );
+    }, t.options.readingAnalysis.deleted);
+  };
+
+  useEffect(() => {
+    if (!open) {
+      hasLoadedForOpenRef.current = false;
+      cancelAnalysis();
+      return;
+    }
+    if (hasLoadedForOpenRef.current) return;
+    hasLoadedForOpenRef.current = true;
+    void loadHistory().catch((error: unknown) => {
+      setIsHistoryLoading(false);
+      notify(
+        interpolate(t.options.readingAnalysis.failed, {
+          reason: error instanceof Error ? error.message : String(error),
+        }),
+        "error",
+      );
+    });
+  }, [open]);
+
+  useEffect(() => () => cancelAnalysis(false), []);
+
+  const selectedRecord = history.find((record) => record.id === selectedId);
+  const displayedResult = selectedRecord?.result ?? streamedResult;
+
+  return (
+    <Dialog
+      open={open}
+      onClose={(_event, reason) => {
+        if (reason !== "backdropClick") onClose();
+      }}
+      fullWidth
+      maxWidth={false}
+      slotProps={{
+        paper: {
+          sx: {
+            width: 800,
+            maxWidth: "calc(100vw - 32px)",
+            overflow: "hidden",
+          },
+        },
+      }}
+    >
+      <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Sparkles size={19} />
+        {t.options.readingAnalysis.title}
+      </DialogTitle>
+      <DialogContent dividers sx={{ p: 0, overflow: "hidden" }}>
+        {isHistoryLoading ? (
+          <Box sx={{ height: 360, display: "grid", placeItems: "center" }}>
+            <Typography variant="body2" color="text.secondary">
+              {t.options.readingAnalysis.loadingHistory}
+            </Typography>
+          </Box>
+        ) : history.length === 0 && !isAnalyzing ? (
+          <Stack
+            spacing={2}
+            alignItems="center"
+            justifyContent="center"
+            sx={{ height: 360, px: 3, textAlign: "center" }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              {t.options.readingAnalysis.emptyState}
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<Sparkles size={16} />}
+              onClick={startAnalysis}
+            >
+              {t.options.readingAnalysis.startAnalysis}
+            </Button>
+          </Stack>
+        ) : (
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: "210px minmax(0, 1fr)",
+              height: 500,
+              maxHeight: "calc(100vh - 200px)",
+              minHeight: 360,
+              overflow: "hidden",
+            }}
+          >
+            <Box
+              sx={{
+                borderRight: "1px solid rgb(228, 233, 242)",
+                overflow: "hidden",
+                p: 1.25,
+              }}
+            >
+              <Typography
+                variant="overline"
+                color="text.secondary"
+                sx={{ px: 1 }}
+              >
+                {t.options.readingAnalysis.history}
+              </Typography>
+              <Stack spacing={0.5} mt={0.5}>
+                {isAnalyzing && (
+                  <Button
+                    variant={!selectedId ? "contained" : "text"}
+                    size="small"
+                    startIcon={<Sparkles size={15} />}
+                    onClick={() => setSelectedId(undefined)}
+                    sx={{ justifyContent: "flex-start" }}
+                  >
+                    {t.options.readingAnalysis.analyzing}
+                  </Button>
+                )}
+                {history.map((record) => (
+                  <ReadingAnalysisHistoryItem
+                    key={record.id}
+                    record={record}
+                    selected={selectedId === record.id}
+                    onSelect={() => setSelectedId(record.id)}
+                    onDelete={() => deleteAnalysis(record.id)}
+                    t={t}
+                  />
+                ))}
+              </Stack>
+            </Box>
+            <Box
+              sx={{
+                minHeight: 0,
+                overflowX: "hidden",
+                overflowY: "auto",
+                p: 2.5,
+              }}
+              aria-live="polite"
+            >
+              {isAnalyzing && !displayedResult && (
+                <Typography variant="body2" color="text.secondary">
+                  {t.options.readingAnalysis.analyzing}
+                </Typography>
+              )}
+              {errorMessage && (
+                <Typography variant="body2" color="error" sx={{ mb: 1.5 }}>
+                  {errorMessage}
+                </Typography>
+              )}
+              {selectedRecord && !isAnalyzing && (
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  mb={1.5}
+                >
+                  {interpolate(t.options.readingAnalysis.generatedFrom, {
+                    count: selectedRecord.highlightCount,
+                  })}
+                </Typography>
+              )}
+              {displayedResult && (
+                <Box
+                  className="markdown-body"
+                  sx={{
+                    fontSize: 14,
+                    lineHeight: 1.7,
+                    overflowWrap: "anywhere",
+                    "& > :first-of-type": { mt: 0 },
+                    "& > :last-child": { mb: 0 },
+                  }}
+                  dangerouslySetInnerHTML={{
+                    __html: markdownToSafeHtml(displayedResult),
+                  }}
+                />
+              )}
+            </Box>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        {(history.length > 0 || isAnalyzing) && (
+          <Button
+            startIcon={<Sparkles size={16} />}
+            disabled={isAnalyzing}
+            onClick={startAnalysis}
+          >
+            {t.options.readingAnalysis.newAnalysis}
+          </Button>
+        )}
+        <Button onClick={onClose}>{t.content.close}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+function ReadingAnalysisHistoryItem({
+  record,
+  selected,
+  onSelect,
+  onDelete,
+  t,
+}: {
+  record: ReadingAnalysisRecord;
+  selected: boolean;
+  onSelect: () => void;
+  onDelete: () => Promise<void>;
+  t: Messages;
+}) {
+  return (
+    <Box
+      sx={{
+        position: "relative",
+        borderRadius: "7px",
+        bgcolor: selected ? "primary.main" : "transparent",
+        color: selected ? "primary.contrastText" : "text.primary",
+        transition: "background-color 120ms ease",
+        "&:hover": {
+          bgcolor: selected ? "primary.dark" : "action.hover",
+        },
+        "& .reading-analysis-delete-action": {
+          opacity: 0,
+          pointerEvents: "none",
+          transition: "opacity 120ms ease",
+        },
+        "&:hover .reading-analysis-delete-action, &:focus-within .reading-analysis-delete-action": {
+          opacity: 1,
+          pointerEvents: "auto",
+        },
+      }}
+    >
+      <Box
+        role="button"
+        tabIndex={0}
+        aria-pressed={selected}
+        onClick={onSelect}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onSelect();
+          }
+        }}
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          width: "100%",
+          minHeight: 34,
+          px: 1,
+          pr: 4.5,
+          borderRadius: "inherit",
+          cursor: "pointer",
+          outline: 0,
+          "&:focus-visible": {
+            boxShadow: "0 0 0 2px rgba(39, 100, 220, 0.28)",
+          },
+        }}
+      >
+        <Typography
+          variant="body2"
+          fontWeight={600}
+          sx={{
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {formatCreatedAt(record.createdAt)}
+        </Typography>
+      </Box>
+      <Box
+        className="reading-analysis-delete-action"
+        sx={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 34,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ConfirmPopover
+          message={t.options.readingAnalysis.deleteConfirmation}
+          onConfirm={onDelete}
+          t={t}
+        >
+          {({ open }) => (
+            <IconButton
+              size="small"
+              aria-label={t.options.readingAnalysis.deleteAnalysis}
+              onClick={(event) => {
+                event.stopPropagation();
+                open(event);
+              }}
+              sx={{
+                color: selected ? "inherit" : "error.main",
+                "&:hover": {
+                  bgcolor: selected
+                    ? "rgba(255, 255, 255, 0.16)"
+                    : "rgba(211, 47, 47, 0.08)",
+                },
+              }}
+            >
+              <Trash2 size={15} />
+            </IconButton>
+          )}
+        </ConfirmPopover>
+      </Box>
+    </Box>
   );
 }
 

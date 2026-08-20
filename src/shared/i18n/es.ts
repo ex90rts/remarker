@@ -139,6 +139,22 @@ export const es: Messages = {
       fetchModels: "Obtener modelos",
       fetchingModels: "Obteniendo…",
     },
+    readingAnalysis: {
+      action: "Análisis con IA",
+      title: "Análisis de lectura",
+      history: "Análisis recientes",
+      loadingHistory: "Cargando historial de análisis…",
+      emptyState: "No hay análisis. Haz clic en el botón para empezar.",
+      startAnalysis: "Iniciar análisis",
+      analyzing: "Analizando…",
+      generatedFrom: "Basado en {{count}} resaltados recientes",
+      newAnalysis: "Nuevo análisis",
+      deleteAnalysis: "Eliminar análisis",
+      deleteConfirmation: "¿Eliminar este análisis?",
+      deleted: "Análisis eliminado.",
+      failed: "Error en el análisis de lectura: {{reason}}",
+      disconnected: "El flujo de análisis se desconectó antes de terminar.",
+    },
     confirmations: {
       archiveFootprint:
         "¿Archivar esta huella? Se ocultará de la lista actual.",

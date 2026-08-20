@@ -137,6 +137,22 @@ export const en = {
       fetchModels: "Fetch models",
       fetchingModels: "Fetching…",
     },
+    readingAnalysis: {
+      action: "AI analysis",
+      title: "Reading analysis",
+      history: "Recent analyses",
+      loadingHistory: "Loading analysis history…",
+      emptyState: "No analysis records yet. Click the button below to start analyzing.",
+      startAnalysis: "Start analysis",
+      analyzing: "Analyzing…",
+      generatedFrom: "Based on {{count}} recent highlights",
+      newAnalysis: "New analysis",
+      deleteAnalysis: "Delete analysis",
+      deleteConfirmation: "Delete this analysis record?",
+      deleted: "Analysis record deleted.",
+      failed: "Reading analysis failed: {{reason}}",
+      disconnected: "The analysis stream disconnected before completion.",
+    },
     confirmations: {
       archiveFootprint:
         "Archive this footprint? It will be hidden from the current list.",

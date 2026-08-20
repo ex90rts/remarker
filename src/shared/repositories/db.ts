@@ -6,6 +6,7 @@ import type {
   HighlightRecord,
   LlmProvider,
   LlmProviderConfig,
+  ReadingAnalysisRecord,
   SiteSetting,
   VocabularyRecord
 } from "../types";
@@ -37,6 +38,7 @@ type StoreName =
   | "highlights"
   | "vocabulary"
   | "footprints"
+  | "readingAnalyses"
   | "siteSettings"
   | "audioCache";
 
@@ -92,6 +94,13 @@ export function openRemarkerDb(): Promise<IDBDatabase> {
         ensureIndex(footprintStore, "archivedAt", "archivedAt", { unique: false });
         ensureIndex(footprintStore, "createdAt", "createdAt", { unique: false });
         ensureIndex(footprintStore, "updatedAt", "updatedAt", { unique: false });
+      }
+
+      const readingAnalysisStore = db.objectStoreNames.contains("readingAnalyses")
+        ? transaction?.objectStore("readingAnalyses")
+        : db.createObjectStore("readingAnalyses", { keyPath: "id" });
+      if (readingAnalysisStore) {
+        ensureIndex(readingAnalysisStore, "createdAt", "createdAt", { unique: false });
       }
 
       if (!db.objectStoreNames.contains("siteSettings")) {
@@ -209,6 +218,60 @@ export async function getHighlightsForUrl(urlKey: string): Promise<HighlightReco
   const store = await tx("highlights", "readonly");
   const index = store.index("urlKey");
   return requestToPromise<HighlightRecord[]>(index.getAll(urlKey));
+}
+
+export async function getRecentHighlights(limit: number): Promise<HighlightRecord[]> {
+  const store = await tx("highlights", "readonly");
+  const request = store.index("createdAt").openCursor(null, "prev");
+  return new Promise((resolve, reject) => {
+    const records: HighlightRecord[] = [];
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor || records.length >= Math.max(0, limit)) {
+        resolve(records);
+        return;
+      }
+      records.push(cursor.value as HighlightRecord);
+      cursor.continue();
+    };
+  });
+}
+
+export async function getRecentReadingAnalyses(
+  limit: number,
+): Promise<ReadingAnalysisRecord[]> {
+  const store = await tx("readingAnalyses", "readonly");
+  const request = store.index("createdAt").openCursor(null, "prev");
+  return new Promise((resolve, reject) => {
+    const records: ReadingAnalysisRecord[] = [];
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor || records.length >= Math.max(0, limit)) {
+        resolve(records);
+        return;
+      }
+      records.push(cursor.value as ReadingAnalysisRecord);
+      cursor.continue();
+    };
+  });
+}
+
+export async function saveReadingAnalysis(
+  record: ReadingAnalysisRecord,
+  historyLimit: number,
+): Promise<void> {
+  await putInStore("readingAnalyses", record);
+  const records = await getAllFromStore<ReadingAnalysisRecord>("readingAnalyses");
+  const staleRecords = records
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(Math.max(0, historyLimit));
+  await Promise.all(
+    staleRecords.map((staleRecord) =>
+      deleteFromStore("readingAnalyses", staleRecord.id),
+    ),
+  );
 }
 
 export async function getVocabularyByCacheKey(cacheKey: string): Promise<VocabularyRecord | undefined> {

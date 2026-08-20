@@ -107,6 +107,13 @@ export interface HighlightRecord {
   updatedAt: string;
 }
 
+export interface ReadingAnalysisRecord {
+  id: string;
+  result: string;
+  highlightCount: number;
+  createdAt: string;
+}
+
 export interface VocabularyRecord {
   id: string;
   /** Missing on legacy records; those records are word lookups. */
@@ -344,4 +351,4 @@ export const DEFAULT_SETTINGS: AppSettings = {
   export: {},
 };
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;

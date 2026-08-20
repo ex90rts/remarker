@@ -23,6 +23,8 @@ import {
   getFromStore,
   getAudioCache,
   getHighlightsForUrl,
+  getRecentHighlights,
+  getRecentReadingAnalyses,
   getNextVocabularyReview,
   getReviewQueue,
   getSettings,
@@ -33,6 +35,7 @@ import {
   putInStore,
   saveSettings,
   saveAudioCache,
+  saveReadingAnalysis,
   queryFootprints,
   queryHighlights,
   queryVocabulary,
@@ -47,9 +50,17 @@ import type {
   HighlightRecord,
   HighlightStatus,
   LlmProvider,
+  ReadingAnalysisRecord,
   SelectionLookupResult,
   VocabularyRecord,
 } from "../shared/types";
+import {
+  buildReadingAnalysisUserPrompt,
+  READING_ANALYSIS_HIGHLIGHT_LIMIT,
+  READING_ANALYSIS_HISTORY_LIMIT,
+  READING_ANALYSIS_SYSTEM_PROMPT,
+  READING_ANALYSIS_TEMPERATURE,
+} from "../shared/reading-analysis";
 import {
   getEffectiveLlmConfig,
   getPromptTemplateForSelectionKind,
@@ -137,11 +148,19 @@ chrome.runtime.onConnect.addListener((port) => {
     activeRequest = { requestId: message.requestId, controller };
     const requestId = message.requestId;
     postPortEvent(port, { type: "started", requestId });
-    explainSelection(message.payload, {
+    const stream = {
       signal: controller.signal,
-      onChunk: (content) => postPortEvent(port, { type: "chunk", requestId, content }),
-    })
-      .then((result) => postPortEvent(port, { type: "completed", requestId, result }))
+      onChunk: (content: string) =>
+        postPortEvent(port, { type: "chunk", requestId, content }),
+    };
+    const operation = message.payload.type === "ANALYZE_READING"
+      ? analyzeReading(stream).then((result) =>
+          postPortEvent(port, { type: "analysis-completed", requestId, result }),
+        )
+      : explainSelection(message.payload, stream).then((result) =>
+          postPortEvent(port, { type: "completed", requestId, result }),
+        );
+    operation
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         postPortEvent(port, {
@@ -252,6 +271,16 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
 
     case "QUERY_HIGHLIGHTS":
       return queryHighlights(message.query);
+
+    case "GET_READING_ANALYSES":
+      return getRecentReadingAnalyses(READING_ANALYSIS_HISTORY_LIMIT);
+
+    case "DELETE_READING_ANALYSIS":
+      await deleteFromStore("readingAnalyses", message.id);
+      return { id: message.id };
+
+    case "ANALYZE_READING":
+      return analyzeReading();
 
     case "QUERY_VOCABULARY":
       return queryVocabulary(message.query);
@@ -487,6 +516,52 @@ async function explainSelection(
   if (record.selectionKind === "word") void enrichVocabularyPronunciation(record);
   await refreshReviewBadge();
   return vocabularyToLookupResult(record);
+}
+
+async function analyzeReading(
+  stream?: { signal: AbortSignal; onChunk: (content: string) => void },
+): Promise<ReadingAnalysisRecord> {
+  const [settings, highlights] = await Promise.all([
+    getSettings(),
+    getRecentHighlights(READING_ANALYSIS_HIGHLIGHT_LIMIT),
+  ]);
+  if (highlights.length === 0) {
+    throw new Error("Reading analysis requires at least one highlight.");
+  }
+
+  const llm = validateRequiredLlmConfiguration(settings);
+  const result = await callOpenAiCompatibleChatApi({
+    provider: llm.provider,
+    baseUrl: llm.baseUrl,
+    apiKey: llm.apiKey,
+    model: llm.model,
+    temperature: READING_ANALYSIS_TEMPERATURE,
+    timeoutMs: settings.llm.timeoutMs,
+    messages: [
+      {
+        role: "system",
+        content: READING_ANALYSIS_SYSTEM_PROMPT,
+      },
+      {
+        role: "user",
+        content: buildReadingAnalysisUserPrompt(
+          highlights,
+          settings.ui.language,
+        ),
+      },
+    ],
+    signal: stream?.signal,
+    onChunk: stream?.onChunk,
+  });
+
+  const record: ReadingAnalysisRecord = {
+    id: crypto.randomUUID(),
+    result,
+    highlightCount: highlights.length,
+    createdAt: new Date().toISOString(),
+  };
+  await saveReadingAnalysis(record, READING_ANALYSIS_HISTORY_LIMIT);
+  return record;
 }
 
 async function enrichVocabularyPronunciation(record: VocabularyRecord): Promise<void> {
@@ -824,28 +899,49 @@ async function callOpenAiCompatibleApi(input: {
   signal?: AbortSignal;
   onChunk?: (content: string) => void;
 }): Promise<string> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), input.timeoutMs);
-  const abortFromCaller = () => controller.abort();
-  input.signal?.addEventListener("abort", abortFromCaller, { once: true });
-  const baseUrl = input.baseUrl.replace(/\/$/, "");
   const prompt = renderPromptTemplate(input.promptTemplate, {
     selection: input.selectedText,
     context: input.context,
   });
-  const requestBody: OpenAiCompatibleChatRequestBody = {
+  return callOpenAiCompatibleChatApi({
+    provider: input.provider,
+    baseUrl: input.baseUrl,
+    apiKey: input.apiKey,
     model: input.model,
     temperature: input.temperature,
+    timeoutMs: input.timeoutMs,
     messages: [
       {
         role: "system",
         content: `Follow the user's prompt template exactly. Respond in ${input.targetLanguage}. Return Markdown.`,
       },
-      {
-        role: "user",
-        content: prompt,
-      },
+      { role: "user", content: prompt },
     ],
+    signal: input.signal,
+    onChunk: input.onChunk,
+  });
+}
+
+async function callOpenAiCompatibleChatApi(input: {
+  provider: LlmProvider;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature: number;
+  timeoutMs: number;
+  messages: Array<{ role: "system" | "user"; content: string }>;
+  signal?: AbortSignal;
+  onChunk?: (content: string) => void;
+}): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), input.timeoutMs);
+  const abortFromCaller = () => controller.abort();
+  input.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  const baseUrl = input.baseUrl.replace(/\/$/, "");
+  const requestBody: OpenAiCompatibleChatRequestBody = {
+    model: input.model,
+    temperature: input.temperature,
+    messages: input.messages,
     ...getReasoningDisabledParams(input.provider, input.model),
     stream: true,
   };

@@ -5,7 +5,10 @@ export const LLM_STREAM_PORT = "remarker-llm-stream";
 export type LlmStreamStartMessage = {
   type: "start";
   requestId: string;
-  payload: Extract<RuntimeMessage, { type: "EXPLAIN_SELECTION" }>;
+  payload: Extract<
+    RuntimeMessage,
+    { type: "EXPLAIN_SELECTION" | "ANALYZE_READING" }
+  >;
 };
 
 export type LlmStreamClientMessage =
@@ -16,6 +19,7 @@ export type LlmStreamEvent =
   | { type: "started"; requestId: string }
   | { type: "chunk"; requestId: string; content: string }
   | { type: "completed"; requestId: string; result: import("./types").SelectionLookupResult }
+  | { type: "analysis-completed"; requestId: string; result: import("./types").ReadingAnalysisRecord }
   | { type: "error"; requestId: string; error: string };
 
 export class OpenAiSseParser {
