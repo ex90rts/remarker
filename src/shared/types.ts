@@ -1,4 +1,5 @@
 import type { SupportedLanguage } from "./i18n";
+import { DEFAULT_COMMON_LINKS, type CommonLink } from "./common-links";
 
 export type HighlightStatus = "pending" | "active" | "not_found" | "ambiguous";
 
@@ -163,6 +164,7 @@ export interface UiPreferences {
   language: SupportedLanguage;
   autoCloseLookupPanelOnCopy: boolean;
   recordsPageSize: RecordsPageSize;
+  commonLinks: CommonLink[];
 }
 
 export interface AppSettings {
@@ -376,6 +378,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     language: "en",
     autoCloseLookupPanelOnCopy: false,
     recordsPageSize: DEFAULT_RECORDS_PAGE_SIZE,
+    commonLinks: DEFAULT_COMMON_LINKS.map((link) => ({ ...link })),
   },
   export: {},
 };

@@ -1,4 +1,9 @@
 import { createLookupCacheKey } from "../shared/cache-key";
+import {
+  extractHtmlTitle,
+  isValidCommonLinkUrl,
+  normalizeCommonLinks,
+} from "../shared/common-links";
 import type { RuntimeMessage, PronunciationResult } from "../shared/messages";
 import {
   LLM_STREAM_PORT,
@@ -320,6 +325,19 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
       return { settings, counts };
     }
 
+    case "UPDATE_COMMON_LINKS": {
+      const settings = await getSettings();
+      const commonLinks = normalizeCommonLinks(message.links);
+      await saveSettings({
+        ...settings,
+        ui: { ...settings.ui, commonLinks },
+      });
+      return commonLinks;
+    }
+
+    case "FETCH_LINK_TITLE":
+      return fetchCommonLinkTitle(message.url);
+
     case "SAVE_SETTINGS":
       await saveSettings(message.settings);
       return message.settings;
@@ -356,6 +374,74 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
     case "IMPORT_SNAPSHOT":
       await importSnapshot(message.snapshot);
       return { imported: true };
+  }
+}
+
+const COMMON_LINK_TITLE_TIMEOUT_MS = 8_000;
+const COMMON_LINK_TITLE_MAX_BYTES = 128 * 1024;
+
+async function fetchCommonLinkTitle(
+  value: string,
+): Promise<{ title?: string }> {
+  const url = value.trim();
+  if (!isValidCommonLinkUrl(url)) return {};
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    COMMON_LINK_TITLE_TIMEOUT_MS,
+  );
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      credentials: "omit",
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    if (!response.ok) return {};
+
+    const contentType = response.headers.get("content-type")?.toLowerCase();
+    if (contentType && !contentType.includes("text/html")) return {};
+
+    const html = await readResponsePrefix(
+      response,
+      COMMON_LINK_TITLE_MAX_BYTES,
+    );
+    return { title: extractHtmlTitle(html) };
+  } catch {
+    return {};
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readResponsePrefix(
+  response: Response,
+  maxBytes: number,
+): Promise<string> {
+  if (!response.body) return (await response.text()).slice(0, maxBytes);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let receivedBytes = 0;
+  let result = "";
+
+  try {
+    while (receivedBytes < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remainingBytes = maxBytes - receivedBytes;
+      const chunk = value.byteLength > remainingBytes
+        ? value.subarray(0, remainingBytes)
+        : value;
+      receivedBytes += chunk.byteLength;
+      result += decoder.decode(chunk, { stream: receivedBytes < maxBytes });
+      if (value.byteLength > remainingBytes) break;
+    }
+    result += decoder.decode();
+    return result;
+  } finally {
+    await reader.cancel().catch(() => undefined);
   }
 }
 

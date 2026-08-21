@@ -20,6 +20,7 @@ import {
 } from "../review";
 import { detectBrowserLanguage } from "../i18n";
 import { normalizeContextForStorage } from "../context";
+import { normalizeCommonLinks } from "../common-links";
 import {
   DEFAULT_SETTINGS,
   LLM_PROVIDER_PRESETS,
@@ -600,7 +601,8 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
       ...DEFAULT_SETTINGS.ui,
       language,
       ...(settings?.ui ?? {}),
-      recordsPageSize: normalizeRecordsPageSize(settings?.ui?.recordsPageSize)
+      recordsPageSize: normalizeRecordsPageSize(settings?.ui?.recordsPageSize),
+      commonLinks: normalizeCommonLinks(settings?.ui?.commonLinks),
     },
     export: { ...DEFAULT_SETTINGS.export, ...(settings?.export ?? {}) },
   };

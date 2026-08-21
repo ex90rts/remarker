@@ -24,6 +24,7 @@ import {
 import type { ReactElement, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { detectBrowserLanguage, getMessages } from "../shared/i18n";
+import { DEFAULT_COMMON_LINKS, type CommonLink } from "../shared/common-links";
 import type {
   ListAllDataResult,
   OptionsOverviewResult,
@@ -89,6 +90,11 @@ export function App() {
 
   function getFullSnapshot(): Promise<ListAllDataResult> {
     return sendMessage<ListAllDataResult>({ type: "LIST_ALL_DATA" });
+  }
+
+  async function saveCommonLinks(links: CommonLink[]) {
+    await sendMessage({ type: "UPDATE_COMMON_LINKS", links });
+    await reload();
   }
 
   function notify(
@@ -464,6 +470,10 @@ export function App() {
                 {tab === "footprints" && (
                   <FootprintsTab
                     recordsPageSize={recordsPageSize}
+                    commonLinks={
+                      overview?.settings.ui.commonLinks ?? DEFAULT_COMMON_LINKS
+                    }
+                    onSaveCommonLinks={saveCommonLinks}
                     onChange={reload}
                     getFullSnapshot={getFullSnapshot}
                     refreshRevision={dataRevision}

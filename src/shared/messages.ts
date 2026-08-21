@@ -10,6 +10,7 @@ import type {
   VocabularyRecord,
 } from "./types";
 import type { ReviewRating } from "./review";
+import type { CommonLink } from "./common-links";
 
 export type RuntimeMessage =
   | { type: "GET_HIGHLIGHTS_FOR_URL"; urlKey: string }
@@ -59,6 +60,8 @@ export type RuntimeMessage =
   | { type: "GET_YOUDAO_PRONUNCIATION"; word: string }
   | { type: "GET_SETTINGS" }
   | { type: "GET_OPTIONS_OVERVIEW" }
+  | { type: "UPDATE_COMMON_LINKS"; links: CommonLink[] }
+  | { type: "FETCH_LINK_TITLE"; url: string }
   | { type: "SAVE_SETTINGS"; settings: AppSettings }
   | { type: "TEST_LLM_CONNECTION"; settings: AppSettings }
   | { type: "GET_LLM_MODELS"; settings: AppSettings }

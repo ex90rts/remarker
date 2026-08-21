@@ -201,6 +201,8 @@ export function Toast({
   );
 }
 
+export const SOURCE_LINK_COLOR = "#00319d";
+
 export function SourceLink({
   href,
   label,
@@ -227,7 +229,7 @@ export function SourceLink({
               overflowWrap: "anywhere",
               whiteSpace: "normal",
             }),
-        color: "#00319d",
+        color: SOURCE_LINK_COLOR,
         textDecoration: "none",
         "&:hover": { textDecoration: "underline" },
       }}
