@@ -3,7 +3,6 @@ import type { SupportedLanguage } from "./i18n";
 
 export const READING_ANALYSIS_HIGHLIGHT_LIMIT = 50;
 export const READING_ANALYSIS_FIELD_LIMIT = 200;
-export const READING_ANALYSIS_HISTORY_LIMIT = 5;
 export const READING_ANALYSIS_TEMPERATURE = 0.5;
 
 const READING_ANALYSIS_OUTPUT_LANGUAGE_NAMES: Record<

@@ -239,9 +239,7 @@ export async function getRecentHighlights(limit: number): Promise<HighlightRecor
   });
 }
 
-export async function getRecentReadingAnalyses(
-  limit: number,
-): Promise<ReadingAnalysisRecord[]> {
+export async function getReadingAnalyses(): Promise<ReadingAnalysisRecord[]> {
   const store = await tx("readingAnalyses", "readonly");
   const request = store.index("createdAt").openCursor(null, "prev");
   return new Promise((resolve, reject) => {
@@ -249,7 +247,7 @@ export async function getRecentReadingAnalyses(
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const cursor = request.result;
-      if (!cursor || records.length >= Math.max(0, limit)) {
+      if (!cursor) {
         resolve(records);
         return;
       }
@@ -259,20 +257,15 @@ export async function getRecentReadingAnalyses(
   });
 }
 
+export async function countReadingAnalyses(): Promise<number> {
+  const store = await tx("readingAnalyses", "readonly");
+  return requestToPromise(store.count());
+}
+
 export async function saveReadingAnalysis(
   record: ReadingAnalysisRecord,
-  historyLimit: number,
 ): Promise<void> {
   await putInStore("readingAnalyses", record);
-  const records = await getAllFromStore<ReadingAnalysisRecord>("readingAnalyses");
-  const staleRecords = records
-    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    .slice(Math.max(0, historyLimit));
-  await Promise.all(
-    staleRecords.map((staleRecord) =>
-      deleteFromStore("readingAnalyses", staleRecord.id),
-    ),
-  );
 }
 
 export async function getVocabularyByCacheKey(cacheKey: string): Promise<VocabularyRecord | undefined> {

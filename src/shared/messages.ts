@@ -32,6 +32,7 @@ export type RuntimeMessage =
   | { type: "GET_REVIEW_STATUS"; now: string }
   | { type: "QUERY_HIGHLIGHTS"; query: DataQuery }
   | { type: "GET_READING_ANALYSES" }
+  | { type: "GET_READING_ANALYSIS_COUNT" }
   | { type: "DELETE_READING_ANALYSIS"; id: string }
   | { type: "ANALYZE_READING" }
   | { type: "QUERY_VOCABULARY"; query: DataQuery }

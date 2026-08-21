@@ -24,7 +24,8 @@ import {
   getAudioCache,
   getHighlightsForUrl,
   getRecentHighlights,
-  getRecentReadingAnalyses,
+  countReadingAnalyses,
+  getReadingAnalyses,
   getNextVocabularyReview,
   getReviewQueue,
   getSettings,
@@ -57,7 +58,6 @@ import type {
 import {
   buildReadingAnalysisUserPrompt,
   READING_ANALYSIS_HIGHLIGHT_LIMIT,
-  READING_ANALYSIS_HISTORY_LIMIT,
   READING_ANALYSIS_TEMPERATURE,
 } from "../shared/reading-analysis";
 import {
@@ -272,7 +272,10 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
       return queryHighlights(message.query);
 
     case "GET_READING_ANALYSES":
-      return getRecentReadingAnalyses(READING_ANALYSIS_HISTORY_LIMIT);
+      return getReadingAnalyses();
+
+    case "GET_READING_ANALYSIS_COUNT":
+      return countReadingAnalyses();
 
     case "DELETE_READING_ANALYSIS":
       await deleteFromStore("readingAnalyses", message.id);
@@ -559,7 +562,7 @@ async function analyzeReading(
     highlightCount: highlights.length,
     createdAt: new Date().toISOString(),
   };
-  await saveReadingAnalysis(record, READING_ANALYSIS_HISTORY_LIMIT);
+  await saveReadingAnalysis(record);
   return record;
 }
 
