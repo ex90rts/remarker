@@ -3,7 +3,7 @@ import {
   buildReadingAnalysisUserPrompt,
   READING_ANALYSIS_FIELD_LIMIT,
   READING_ANALYSIS_HIGHLIGHT_LIMIT,
-} from "../reading-analysis";
+} from "../llm-prompts";
 import type { HighlightRecord } from "../types";
 
 function makeHighlight(

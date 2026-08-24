@@ -64,7 +64,7 @@ export const zhTW: Messages = {
       expand: "展開",
     },
     activity: {
-      title: "最近 6 個月學習活動",
+      title: "最近學習活動",
       less: "少",
       more: "多",
       reviewTitle: "今日複習",
@@ -203,23 +203,25 @@ export const zhTW: Messages = {
       baseUrl: "Base URL",
       apiKey: "API Key",
       apiKeyHelp: "本設定資訊僅會儲存在你的瀏覽器本機。",
+      commonModel: "通用模型",
       model: "模型",
       modelHelp:
         "可以先取得模型後選擇，也可以自行輸入；建議選用 Flash 或類似模型以加快回應速度。",
+      businessModelHelp: "選填；留空時使用上方的通用模型。",
       advanced: "進階配置",
+      advancedSummary:
+        "依業務場景配置不同模型與 Temperature，自訂提示詞。",
       temperature: "Temperature",
       timeoutMs: "逾時時間 ms",
-      promptTemplate: "提示詞模板",
+      promptTemplate: "System 提示詞",
       promptTemplateType: "提示詞類型",
       promptTemplateTypes: {
         lookup: "查詞",
         translation: "翻譯",
-        analysis: "AI 分析",
+        analysis: "AI 解讀",
       },
-      promptTemplateHelp: "可用變數：{{selection}}、{{context}}",
-      analysisPromptTemplateHelp: "AI 分析的系統提示詞，無需模板變數。",
+      analysisPromptTemplateHelp: "AI 解讀的系統提示詞，無需模板變數。",
       behavior: "行為",
-      autoCloseLookupPanelOnCopy: "查詞彈窗複製後自動關閉",
       language: "語言",
       languageHelp:
         "所選語言為介面語言，同時為大型語言模型翻譯的目標語言，建議開始使用時確定好之後就不要再修改。",
@@ -254,7 +256,6 @@ export const zhTW: Messages = {
     },
     errors: {
       promptTemplateRequired: "提示詞模板不能為空。",
-      promptTemplateMissingVariables: "提示詞模板缺少必要變數：{{variables}}",
       llmConfigRequired: "必須填寫：{{fields}}。",
       llmConnectionFailed: "LLM 連線測試失敗：{{reason}}",
       modelListConfigRequired: "請先設定：{{fields}}。",
@@ -276,6 +277,16 @@ export const zhTW: Messages = {
     about: {
       releases: {
         title: "Releases",
+        showMore: "顯示更多",
+        showLess: "收起",
+        v1_4: {
+          version: "1.4.0",
+          summary: "新增常用連結功能及其他細節優化。",
+          feature1: "足跡頁面整合了常用閱讀連結功能。",
+          feature2: "標記頁面新增 AI 閱讀習慣分析功能。",
+          feature3: "優化大型語言模型設定，支援依不同業務進一步區分設定。",
+          feature4: "優化足跡頁面的最近學習活動樣式等。",
+        },
         v1_3: {
           version: "1.3.0",
           summary: "優化設定功能及其他細節。",

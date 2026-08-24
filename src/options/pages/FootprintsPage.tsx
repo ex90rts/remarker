@@ -120,6 +120,8 @@ function LearningActivityHeatmap({
       ),
     [days],
   );
+  const activityColumnCount = Math.ceil(days.length / ACTIVITY_ROW_COUNT);
+  const activityGridWidth = getActivityGridWidth(activityColumnCount);
   const monthFormatter = useMemo(
     () => new Intl.DateTimeFormat(language, { month: "short" }),
     [language],
@@ -201,64 +203,23 @@ function LearningActivityHeatmap({
             flex: 1,
             minHeight: 0,
             pb: 0.25,
-            containerType: "inline-size",
-            containerName: "activity-heatmap",
+            overflow: "hidden",
+            display: "flex",
+            justifyContent: "flex-end",
+            alignItems: "flex-start",
           }}
         >
           <Box
             role="img"
             aria-label={t.options.activity.title}
             sx={{
-              "--activity-row-count": ACTIVITY_ROWS_WIDE,
-              "--activity-column-count": Math.ceil(
-                days.length / ACTIVITY_ROWS_WIDE,
-              ),
-              "--activity-grid-max-width": `${getActivityGridMaxWidth(
-                days.length,
-                ACTIVITY_ROWS_WIDE,
-                ACTIVITY_CELL_SIZE_WIDE,
-                ACTIVITY_GAP_WIDE,
-              )}px`,
-              "--activity-gap": `${ACTIVITY_GAP_WIDE}px`,
               position: "relative",
-              width: "100%",
-              maxWidth: "var(--activity-grid-max-width)",
-              mx: "auto",
+              width: activityGridWidth,
+              minWidth: activityGridWidth,
+              flexShrink: 0,
               pt: `${ACTIVITY_MONTH_LABEL_HEIGHT}px`,
               opacity: isLoading ? 0.55 : 1,
               transition: "opacity 120ms ease",
-              "@container activity-heatmap (max-width: 760px)": {
-                "--activity-row-count": ACTIVITY_ROWS_MEDIUM,
-                "--activity-column-count": Math.ceil(
-                  days.length / ACTIVITY_ROWS_MEDIUM,
-                ),
-                "--activity-grid-max-width": `${getActivityGridMaxWidth(
-                  days.length,
-                  ACTIVITY_ROWS_MEDIUM,
-                  ACTIVITY_CELL_SIZE_MEDIUM,
-                  ACTIVITY_GAP_MEDIUM,
-                )}px`,
-                "--activity-gap": `${ACTIVITY_GAP_MEDIUM}px`,
-                "& .activity-month-label": {
-                  gridColumn: "var(--month-column-medium)",
-                },
-              },
-              "@container activity-heatmap (max-width: 500px)": {
-                "--activity-row-count": ACTIVITY_ROWS_NARROW,
-                "--activity-column-count": Math.ceil(
-                  days.length / ACTIVITY_ROWS_NARROW,
-                ),
-                "--activity-grid-max-width": `${getActivityGridMaxWidth(
-                  days.length,
-                  ACTIVITY_ROWS_NARROW,
-                  ACTIVITY_CELL_SIZE_NARROW,
-                  ACTIVITY_GAP_NARROW,
-                )}px`,
-                "--activity-gap": `${ACTIVITY_GAP_NARROW}px`,
-                "& .activity-month-label": {
-                  gridColumn: "var(--month-column-narrow)",
-                },
-              },
             }}
           >
             <Box
@@ -267,9 +228,8 @@ function LearningActivityHeatmap({
                 position: "absolute",
                 inset: "0 0 auto",
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(var(--activity-column-count), minmax(0, 1fr))",
-                columnGap: "var(--activity-gap)",
+                gridTemplateColumns: `repeat(${activityColumnCount}, ${ACTIVITY_CELL_SIZE}px)`,
+                columnGap: `${ACTIVITY_GAP}px`,
                 pointerEvents: "none",
               }}
             >
@@ -280,12 +240,7 @@ function LearningActivityHeatmap({
                   variant="caption"
                   className="activity-month-label"
                   sx={{
-                    "--month-column-medium":
-                      Math.floor(dayIndex / ACTIVITY_ROWS_MEDIUM) + 1,
-                    "--month-column-narrow":
-                      Math.floor(dayIndex / ACTIVITY_ROWS_NARROW) + 1,
-                    gridColumn:
-                      Math.floor(dayIndex / ACTIVITY_ROWS_WIDE) + 1,
+                    gridColumn: Math.floor(dayIndex / ACTIVITY_ROW_COUNT) + 1,
                     gridRow: 1,
                     color: "text.secondary",
                     lineHeight: "16px",
@@ -299,13 +254,10 @@ function LearningActivityHeatmap({
             <Box
               sx={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(var(--activity-column-count), minmax(0, 1fr))",
-                gridTemplateRows:
-                  "repeat(var(--activity-row-count), auto)",
+                gridTemplateColumns: `repeat(${activityColumnCount}, ${ACTIVITY_CELL_SIZE}px)`,
+                gridTemplateRows: `repeat(${ACTIVITY_ROW_COUNT}, ${ACTIVITY_CELL_SIZE}px)`,
                 gridAutoFlow: "column",
-                columnGap: "var(--activity-gap)",
-                rowGap: "var(--activity-gap)",
+                gap: `${ACTIVITY_GAP}px`,
               }}
             >
               {days.map((day) => {
@@ -354,14 +306,14 @@ function LearningActivityHeatmap({
                   <Box
                     component="span"
                     sx={{
-                      width: "100%",
-                      aspectRatio: "1 / 1",
+                      width: ACTIVITY_CELL_SIZE,
+                      height: ACTIVITY_CELL_SIZE,
                       borderRadius: "3px",
                       bgcolor: getActivityColor(dayActivity.total),
                       border: "1px solid",
                       borderColor: isMonthStart
                         ? ACTIVITY_MONTH_START_BORDER_COLOR
-                        : "rgba(27, 31, 36, 0.06)",
+                        : "rgba(27, 31, 36, 0)",
                       boxSizing: "border-box",
                     }}
                   />
@@ -1041,26 +993,17 @@ function CommonLinksCard({
 }
 
 const ACTIVITY_SECTION_HEIGHT = 208;
-const ACTIVITY_ROWS_WIDE = 5;
-const ACTIVITY_ROWS_MEDIUM = 6;
-const ACTIVITY_ROWS_NARROW = 7;
-const ACTIVITY_CELL_SIZE_WIDE = 18;
-const ACTIVITY_CELL_SIZE_MEDIUM = 18;
-const ACTIVITY_CELL_SIZE_NARROW = 15;
-const ACTIVITY_GAP_WIDE = 3;
-const ACTIVITY_GAP_MEDIUM = 2;
-const ACTIVITY_GAP_NARROW = 2;
+const ACTIVITY_ROW_COUNT = 5;
+const ACTIVITY_CELL_SIZE = 18;
+const ACTIVITY_GAP = 5.65;
 const ACTIVITY_MONTH_LABEL_HEIGHT = 18;
 const ACTIVITY_MONTH_START_BORDER_COLOR = "#0073ffff";
 
-function getActivityGridMaxWidth(
-  dayCount: number,
-  rowCount: number,
-  cellSize: number,
-  gap: number,
-): number {
-  const columnCount = Math.ceil(dayCount / rowCount);
-  return columnCount * cellSize + Math.max(0, columnCount - 1) * gap;
+function getActivityGridWidth(columnCount: number): number {
+  return (
+    columnCount * ACTIVITY_CELL_SIZE +
+    Math.max(0, columnCount - 1) * ACTIVITY_GAP
+  );
 }
 
 function createSixMonthActivityCalendar(now: Date): ActivityCalendarDay[] {

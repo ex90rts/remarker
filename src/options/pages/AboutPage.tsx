@@ -1,8 +1,21 @@
-import { Box, Stack, Typography } from "@mui/material";
+import { Box, Button, Stack, Typography } from "@mui/material";
+import { ChevronDown, ChevronUp } from "lucide-react";
+import { useState } from "react";
 import type { Messages } from "../../shared/i18n";
 
 export function AboutTab({ t }: { t: Messages }) {
+  const [showAllReleases, setShowAllReleases] = useState(false);
   const releases = [
+    {
+      version: t.options.about.releases.v1_4.version,
+      summary: t.options.about.releases.v1_4.summary,
+      features: [
+        t.options.about.releases.v1_4.feature1,
+        t.options.about.releases.v1_4.feature2,
+        t.options.about.releases.v1_4.feature3,
+        t.options.about.releases.v1_4.feature4,
+      ],
+    },
     {
       version: t.options.about.releases.v1_3.version,
       summary: t.options.about.releases.v1_3.summary,
@@ -54,6 +67,10 @@ export function AboutTab({ t }: { t: Messages }) {
       ],
     },
   ];
+  const visibleReleases = showAllReleases
+    ? releases
+    : releases.slice(0, DEFAULT_VISIBLE_RELEASE_COUNT);
+  const hasOlderReleases = releases.length > DEFAULT_VISIBLE_RELEASE_COUNT;
 
   return (
     <Stack spacing={3} maxWidth={860}>
@@ -61,8 +78,8 @@ export function AboutTab({ t }: { t: Messages }) {
         <Typography variant="h6" gutterBottom>
           {t.options.about.releases.title}
         </Typography>
-        <Stack spacing={2.5}>
-          {releases.map((release) => (
+        <Stack id="release-history" spacing={2.5}>
+          {visibleReleases.map((release) => (
             <Stack spacing={1} key={release.version}>
               <Typography variant="subtitle1" fontWeight={700}>
                 {release.version}
@@ -84,8 +101,33 @@ export function AboutTab({ t }: { t: Messages }) {
               </Box>
             </Stack>
           ))}
+          {hasOlderReleases && (
+            <Box>
+              <Button
+                variant="text"
+                size="small"
+                aria-controls="release-history"
+                aria-expanded={showAllReleases}
+                endIcon={
+                  showAllReleases ? (
+                    <ChevronUp size={15} />
+                  ) : (
+                    <ChevronDown size={15} />
+                  )
+                }
+                onClick={() => setShowAllReleases((current) => !current)}
+                sx={{ px: 0.5 }}
+              >
+                {showAllReleases
+                  ? t.options.about.releases.showLess
+                  : t.options.about.releases.showMore}
+              </Button>
+            </Box>
+          )}
         </Stack>
       </Box>
     </Stack>
   );
 }
+
+const DEFAULT_VISIBLE_RELEASE_COUNT = 4;

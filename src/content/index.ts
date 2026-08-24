@@ -269,6 +269,7 @@ let overlayHost: HTMLDivElement | undefined;
 let currentSelection: SelectionState | undefined;
 let currentUrlKey = normalizeUrlKey(location.href);
 let panelPinned = false;
+let panelClosesOnOutsideClick = false;
 let toolbarPinned = false;
 let toolbarAnchor: (() => DOMRect | undefined) | undefined;
 let toolbarPlacement: "above" | "below" = "above";
@@ -277,7 +278,6 @@ let suppressSelectionChangeUntil = 0;
 let transientTimer: number | undefined;
 let lookupPanelTimer: number | undefined;
 let t: ContentMessages = getContentMessages(detectBrowserLanguage());
-let autoCloseLookupPanelOnCopy = false;
 let extensionActive = false;
 let activeStream:
   | {
@@ -300,10 +300,9 @@ async function init(): Promise<void> {
 
 async function loadMessages(): Promise<void> {
   const settings = await sendMessage<{
-    ui: { language: SupportedLanguage; autoCloseLookupPanelOnCopy?: boolean };
+    ui: { language: SupportedLanguage };
   }>({ type: "GET_SETTINGS" }).catch(() => undefined);
   t = getContentMessages(settings?.ui.language ?? detectBrowserLanguage());
-  autoCloseLookupPanelOnCopy = Boolean(settings?.ui.autoCloseLookupPanelOnCopy);
 }
 
 function getContentMessages(language: SupportedLanguage): ContentMessages {
@@ -381,6 +380,7 @@ function deactivateExtension(): void {
   overlayHost = undefined;
   currentSelection = undefined;
   panelPinned = false;
+  panelClosesOnOutsideClick = false;
   toolbarPinned = false;
   clearTransientTimer();
   clearLookupPanelHideTimer();
@@ -688,6 +688,7 @@ function handleSelectionChange(): void {
 
 function renderToolbar(selection: SelectionState): void {
   panelPinned = false;
+  panelClosesOnOutsideClick = false;
   toolbarPinned = false;
   clearTransientTimer();
   toolbar.className = "toolbar";
@@ -1496,6 +1497,7 @@ function renderExistingHighlightToolbar(
 ): void {
   hideHighlightNoteTooltip();
   panelPinned = false;
+  panelClosesOnOutsideClick = false;
   toolbarPinned = true;
   clearTransientTimer();
   toolbar.className = "toolbar";
@@ -1540,6 +1542,7 @@ function renderExistingHighlightToolbar(
 function showNoteEditor(element: HTMLElement, id: string): void {
   toolbar.classList.remove("visible");
   panelPinned = true;
+  panelClosesOnOutsideClick = false;
   panel.className = "panel visible";
   panel.replaceChildren();
   const editor = document.createElement("div");
@@ -1846,6 +1849,7 @@ function positionPanel(selectionRect: DOMRect): void {
 function showTransientSuccess(rect: DOMRect): void {
   clearTransientTimer();
   panelPinned = false;
+  panelClosesOnOutsideClick = false;
   toolbarPinned = true;
   panel.classList.remove("visible");
   toolbar.replaceChildren();
@@ -1863,6 +1867,7 @@ function showTransientSuccess(rect: DOMRect): void {
 function showStatusPanel(text: string, isError: boolean): void {
   if (!currentSelection) return;
   panelPinned = false;
+  panelClosesOnOutsideClick = true;
   toolbarPinned = false;
   panel.textContent = text;
   panel.className = `panel visible${isError ? " error" : ""}`;
@@ -1878,6 +1883,7 @@ function showErrorPanel(error: unknown): void {
 
   if (!currentSelection) return;
   panelPinned = false;
+  panelClosesOnOutsideClick = true;
   toolbarPinned = false;
   panel.className = "panel visible error";
   panel.replaceChildren();
@@ -1917,6 +1923,7 @@ function showExplanationPanel(
 ): void {
   if (!currentSelection) return;
   panelPinned = true;
+  panelClosesOnOutsideClick = true;
   toolbar.classList.remove("visible");
   panel.className = "panel visible";
   panel.replaceChildren();
@@ -1941,12 +1948,6 @@ function showExplanationPanel(
       async () => {
         await navigator.clipboard.writeText(text);
         showButtonSuccess(copyExplanationButton, "copy");
-        if (autoCloseLookupPanelOnCopy) {
-          window.setTimeout(() => {
-            panelPinned = false;
-            hideToolbar();
-          }, 180);
-        }
       },
     );
     actions.append(copyExplanationButton);
@@ -1996,6 +1997,7 @@ function showLookupExplanationPanel(
   }
 
   panelPinned = false;
+  panelClosesOnOutsideClick = true;
   toolbarPinned = false;
   toolbar.classList.remove("visible");
   panel.className = "panel visible";
@@ -2050,6 +2052,7 @@ function getExplanationPanelTitle(isLoading: boolean): string {
 function hideToolbar(): void {
   if (!toolbar || !panel) return;
   panelPinned = false;
+  panelClosesOnOutsideClick = false;
   toolbarPinned = false;
   toolbarAnchor = undefined;
   if (toolbarPositionFrame !== undefined) {
@@ -2126,6 +2129,15 @@ function unwrapElement(element: HTMLElement): void {
 function handleDocumentMouseDown(event: MouseEvent): void {
   const target = event.composedPath()[0];
   if (target instanceof Node && shadowRoot.contains(target)) return;
+
+  if (
+    panelClosesOnOutsideClick &&
+    panel.classList.contains("visible")
+  ) {
+    cancelActiveStream();
+    hideToolbar();
+  }
+
   if (
     target instanceof HTMLElement &&
     target.closest(`.${LOOKUP_CLASS}`)

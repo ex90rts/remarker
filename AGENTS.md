@@ -46,7 +46,7 @@ Use `npm run build` before considering larger UI or extension-behavior changes c
 
 ## Product Rules
 
-- Prompt validation requires `{{selection}}`, and `{{context}}`.
+- Lookup and translation prompt settings are sent as `role=system`; selected content and context are assembled by the service worker and sent as `role=user`.
 - The UI language is also the LLM translation target language.
 - Word lookups are automatically saved to the vocabulary list.
 - Word lookup records and lookup results must only be persisted in `vocabulary`; do not add an `explanations` store or parallel lookup table.

@@ -3,8 +3,6 @@ import type { RuntimeMessage } from "../shared/messages";
 import type { HighlightStatus } from "../shared/types";
 import type { TabKey } from "./types";
 
-const PROMPT_REQUIRED_VARIABLES = ["{{selection}}", "{{context}}"] as const;
-
 export function getTabLabel(tab: TabKey, t: Messages): string {
   return {
     footprints: t.options.tabs.footprints,
@@ -75,12 +73,6 @@ export function includesFuzzy(
 
 export function getSourceSearchKeyword(value: string): string {
   return value.trim().slice(0, 24);
-}
-
-export function getMissingPromptVariables(promptTemplate: string): string[] {
-  return PROMPT_REQUIRED_VARIABLES.filter(
-    (variable) => !promptTemplate.includes(variable),
-  );
 }
 
 export function formatError(error: unknown): string {

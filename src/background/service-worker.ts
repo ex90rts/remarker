@@ -16,6 +16,11 @@ import {
   buildLlmModelsUrl,
   parseLlmModelIds,
 } from "../shared/llm-models";
+import {
+  buildReadingAnalysisChatMessages,
+  buildSelectionChatMessages,
+  READING_ANALYSIS_HIGHLIGHT_LIMIT,
+} from "../shared/llm-prompts";
 import { normalizeContextForStorage } from "../shared/context";
 import { getHostname, normalizeUrlKey } from "../shared/url";
 import {
@@ -51,21 +56,21 @@ import {
 } from "../shared/repositories/db";
 import type {
   AppSettings,
+  EffectiveLlmBusinessConfig,
+  EffectiveLlmConfig,
   FootprintListItem,
   FootprintRecord,
   HighlightRecord,
   HighlightStatus,
   LlmProvider,
+  PromptTemplateType,
   ReadingAnalysisRecord,
   SelectionLookupResult,
   VocabularyRecord,
 } from "../shared/types";
 import {
-  buildReadingAnalysisUserPrompt,
-  READING_ANALYSIS_HIGHLIGHT_LIMIT,
-  READING_ANALYSIS_TEMPERATURE,
-} from "../shared/reading-analysis";
-import {
+  DEFAULT_LLM_TIMEOUT_MS,
+  getEffectiveLlmBusinessConfig,
   getEffectiveLlmConfig,
   getPromptTemplateForSelectionKind,
   SCHEMA_VERSION,
@@ -521,10 +526,12 @@ async function explainSelection(
   stream?: { signal: AbortSignal; onChunk: (content: string) => void },
 ): Promise<SelectionLookupResult> {
   const settings = await getSettings();
-  const llm = getEffectiveLlmConfig(settings.llm);
+  const businessType =
+    input.selectionKind === "word" ? "lookup" : "translation";
+  const llm = getEffectiveLlmBusinessConfig(settings.llm, businessType);
   const modelIdentity = `${llm.provider}:${llm.model}`;
   const targetLanguage = getTargetLanguageName(settings);
-  const promptTemplate = getPromptTemplateForSelectionKind(
+  const systemPrompt = getPromptTemplateForSelectionKind(
     settings.llm,
     input.selectionKind,
   );
@@ -536,7 +543,7 @@ async function explainSelection(
     sourceKey: urlKey,
     model: modelIdentity,
     selectionKind: input.selectionKind,
-    promptTemplate,
+    promptTemplate: systemPrompt,
     targetLanguage,
   });
 
@@ -567,9 +574,9 @@ async function explainSelection(
     baseUrl: llm.baseUrl,
     apiKey: llm.apiKey,
     model: llm.model,
-    temperature: settings.llm.temperature,
-    timeoutMs: settings.llm.timeoutMs,
-    promptTemplate,
+    temperature: llm.temperature,
+    timeoutMs: llm.timeoutMs,
+    systemPrompt,
     targetLanguage,
     selectedText: input.selectedText,
     context,
@@ -617,27 +624,19 @@ async function analyzeReading(
     throw new Error("Reading analysis requires at least one highlight.");
   }
 
-  const llm = validateRequiredLlmConfiguration(settings);
+  const llm = validateRequiredLlmConfiguration(settings, "analysis");
   const result = await callOpenAiCompatibleChatApi({
     provider: llm.provider,
     baseUrl: llm.baseUrl,
     apiKey: llm.apiKey,
     model: llm.model,
-    temperature: READING_ANALYSIS_TEMPERATURE,
-    timeoutMs: settings.llm.timeoutMs,
-    messages: [
-      {
-        role: "system",
-        content: settings.llm.analysisPromptTemplate,
-      },
-      {
-        role: "user",
-        content: buildReadingAnalysisUserPrompt(
-          highlights,
-          settings.ui.language,
-        ),
-      },
-    ],
+    temperature: llm.temperature,
+    timeoutMs: llm.timeoutMs,
+    messages: buildReadingAnalysisChatMessages({
+      systemPrompt: settings.llm.analysisPromptTemplate,
+      highlights,
+      language: settings.ui.language,
+    }),
     signal: stream?.signal,
     onChunk: stream?.onChunk,
   });
@@ -820,8 +819,21 @@ function getTargetLanguageName(settings: AppSettings): string {
   );
 }
 
-function validateRequiredLlmConfiguration(settings: AppSettings) {
-  const llm = getEffectiveLlmConfig(settings.llm);
+function validateRequiredLlmConfiguration(
+  settings: AppSettings,
+  businessType: PromptTemplateType,
+): EffectiveLlmBusinessConfig;
+function validateRequiredLlmConfiguration(
+  settings: AppSettings,
+  businessType?: undefined,
+): EffectiveLlmConfig;
+function validateRequiredLlmConfiguration(
+  settings: AppSettings,
+  businessType?: PromptTemplateType,
+): EffectiveLlmConfig | EffectiveLlmBusinessConfig {
+  const llm = businessType
+    ? getEffectiveLlmBusinessConfig(settings.llm, businessType)
+    : getEffectiveLlmConfig(settings.llm);
   const missing: string[] = [];
   if (!llm.baseUrl.trim()) missing.push("base URL");
   if (!llm.apiKey.trim()) missing.push("API key");
@@ -836,24 +848,23 @@ function validateLlmConfiguration(
   settings: AppSettings,
   selectionKind: "word" | "text",
 ): void {
-  validateRequiredLlmConfiguration(settings);
-  const promptTemplate = getPromptTemplateForSelectionKind(
+  validateRequiredLlmConfiguration(
+    settings,
+    selectionKind === "word" ? "lookup" : "translation",
+  );
+  const systemPrompt = getPromptTemplateForSelectionKind(
     settings.llm,
     selectionKind,
   );
-  const missingPromptVariables = ["{{selection}}", "{{context}}"]
-    .filter((variable) => !promptTemplate.includes(variable));
-  if (missingPromptVariables.length) {
-    throw new Error(
-      `LLM prompt template is missing required variables: ${missingPromptVariables.join(", ")}.`,
-    );
+  if (!systemPrompt.trim()) {
+    throw new Error("LLM system prompt cannot be empty.");
   }
 }
 
 async function testLlmConnection(settings: AppSettings): Promise<void> {
   const llm = validateRequiredLlmConfiguration(settings);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), settings.llm.timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_LLM_TIMEOUT_MS);
   const baseUrl = llm.baseUrl.replace(/\/$/, "");
 
   try {
@@ -876,7 +887,7 @@ async function testLlmConnection(settings: AppSettings): Promise<void> {
     await response.body?.cancel();
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error(`LLM connection test timed out after ${settings.llm.timeoutMs} ms.`);
+      throw new Error(`LLM connection test timed out after ${DEFAULT_LLM_TIMEOUT_MS} ms.`);
     }
     throw error;
   } finally {
@@ -887,7 +898,7 @@ async function testLlmConnection(settings: AppSettings): Promise<void> {
 async function getLlmModels(settings: AppSettings): Promise<string[]> {
   const llm = getEffectiveLlmConfig(settings.llm);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), settings.llm.timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_LLM_TIMEOUT_MS);
 
   try {
     const response = await fetch(buildLlmModelsUrl(llm.baseUrl), {
@@ -911,7 +922,7 @@ async function getLlmModels(settings: AppSettings): Promise<string[]> {
   } catch (error) {
     if (controller.signal.aborted) {
       throw new Error(
-        `Fetching models timed out after ${settings.llm.timeoutMs} ms.`,
+        `Fetching models timed out after ${DEFAULT_LLM_TIMEOUT_MS} ms.`,
       );
     }
     if (error instanceof TypeError) {
@@ -980,17 +991,13 @@ async function callOpenAiCompatibleApi(input: {
   model: string;
   temperature: number;
   timeoutMs: number;
-  promptTemplate: string;
+  systemPrompt: string;
   targetLanguage: string;
   selectedText: string;
   context: string;
   signal?: AbortSignal;
   onChunk?: (content: string) => void;
 }): Promise<string> {
-  const prompt = renderPromptTemplate(input.promptTemplate, {
-    selection: input.selectedText,
-    context: input.context,
-  });
   return callOpenAiCompatibleChatApi({
     provider: input.provider,
     baseUrl: input.baseUrl,
@@ -998,13 +1005,7 @@ async function callOpenAiCompatibleApi(input: {
     model: input.model,
     temperature: input.temperature,
     timeoutMs: input.timeoutMs,
-    messages: [
-      {
-        role: "system",
-        content: `Follow the user's prompt template exactly. Respond in ${input.targetLanguage}. Return Markdown.`,
-      },
-      { role: "user", content: prompt },
-    ],
+    messages: buildSelectionChatMessages(input),
     signal: input.signal,
     onChunk: input.onChunk,
   });
@@ -1192,15 +1193,6 @@ function canDisableDeepSeekThinking(model: string): boolean {
     normalized.includes("deepseek-v4-pro") ||
     normalized.includes("deepseek-v4-flash")
   );
-}
-
-function renderPromptTemplate(
-  template: string,
-  values: { selection: string; context: string },
-): string {
-  return template
-    .replaceAll("{{selection}}", values.selection)
-    .replaceAll("{{context}}", values.context);
 }
 
 async function getPronunciation(

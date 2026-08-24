@@ -143,17 +143,25 @@ export interface VocabularyRecord {
   updatedAt: string;
 }
 
+export type PromptTemplateType = "lookup" | "translation" | "analysis";
+
+export interface LlmBusinessConfig {
+  /** Empty means the active provider's general model. */
+  model: string;
+  temperature: number;
+  timeoutMs: number;
+}
+
+export type LlmBusinessConfigs = Record<PromptTemplateType, LlmBusinessConfig>;
+
 export interface LlmConfig {
   provider: LlmProvider;
   providers: LlmProviderConfigs;
-  temperature: number;
-  timeoutMs: number;
+  businesses: LlmBusinessConfigs;
   lookupPromptTemplate: string;
   translationPromptTemplate: string;
   analysisPromptTemplate: string;
 }
-
-export type PromptTemplateType = "lookup" | "translation" | "analysis";
 
 export interface ExportSettings {
   lastIncrementalExportAt?: string;
@@ -162,7 +170,6 @@ export interface ExportSettings {
 export interface UiPreferences {
   defaultHighlightColor: HighlightColor;
   language: SupportedLanguage;
-  autoCloseLookupPanelOnCopy: boolean;
   recordsPageSize: RecordsPageSize;
   commonLinks: CommonLink[];
 }
@@ -228,16 +235,16 @@ export interface StartupCache {
 }
 
 const DEFAULT_LOOKUP_PROMPT_TEMPLATE_EN =
-  "You are a knowledgeable, trend-savvy linguist. Following the requirements below, explain the selected word in context.\n\nRequirements:\n- Infer the source language from the context; default to English when uncertain.\n- Determine the best meaning of the selected word in the current context, then provide a context-based analysis and supplement it with other common meanings and expanded usage.\n- Return content in this exact order with no extraneous content: Current Meaning, Context Analysis, Additional Meanings, Common Usage and Example Sentences.\n- The returned content must be in Markdown source format.\n\nSelected Word:\n{{selection}}\n\nContext:\n{{context}}";
+  "You are a knowledgeable, trend-savvy linguist. Following the requirements below, explain the selected content in context.\n\nRequirements:\n- Infer the source language from the context; default to English when uncertain.\n- Determine the best meaning of the selected content in the current context, then provide a context-based analysis and supplement it with other common meanings and expanded usage.\n- Return content in this exact order with no extraneous content: Current Meaning, Context Analysis, Additional Meanings, Common Usage and Example Sentences.\n- The returned content must be in Markdown source format.";
 
 const DEFAULT_TRANSLATION_PROMPT_TEMPLATE_EN =
-  "You are a knowledgeable, trend-savvy linguist. Following the requirements below, translate the selected content in context.\n\nRequirements:\n- Infer the source language from the context; default to English when uncertain.\n- Translate the selected content completely based on the context, then provide a context-based analysis and extract high-frequency vocabulary and common phrases.\n- Return content in this exact order with no extraneous content: Best Translation, Context Analysis, High-Frequency Vocabulary and Common Phrases.\n- The returned content must be in Markdown source format.\n\nSelected Content:\n{{selection}}\n\nContext:\n{{context}}";
+  "You are a knowledgeable, trend-savvy linguist. Following the requirements below, translate the selected content in context.\n\nRequirements:\n- Infer the source language from the context; default to English when uncertain.\n- Translate the selected content completely based on the context, then provide a context-based analysis and extract high-frequency vocabulary and common phrases.\n- Return content in this exact order with no extraneous content: Best Translation, Context Analysis, High-Frequency Vocabulary and Common Phrases.\n- The returned content must be in Markdown source format.";
 
 const DEFAULT_LOOKUP_PROMPT_TEMPLATE_ZH_CN =
-  "你是一位知识丰富、熟悉流行表达的语言学专家，请根据要求结合上下文解释选中的词语。\n\n要求：\n- 从上下文推断源语言，无法确定时默认按英语处理。\n- 结合上下文判断选中词语在当前语境中的最佳含义，然后给出基于上下文的解析，并补充常见其他含义和用法扩展。\n- 返回内容必须严格按以下顺序组织，不要添加无关内容：当前含义、上下文解析、其他含义、常见用法和例句。\n- 返回内容必须是 Markdown 源码格式。\n\n选中词语：\n{{selection}}\n\n上下文：\n{{context}}";
+  "你是一位知识丰富、熟悉流行表达的语言学专家，请根据要求结合上下文解释选中内容。\n\n要求：\n- 从上下文推断源语言，无法确定时默认按英语处理。\n- 结合上下文判断选中内容在当前语境中的最佳含义，然后给出基于上下文的解析，并补充常见其他含义和用法扩展。\n- 返回内容必须严格按以下顺序组织，不要添加无关内容：当前含义、上下文解析、其他含义、常见用法和例句。\n- 返回内容必须是 Markdown 源码格式。";
 
 const DEFAULT_TRANSLATION_PROMPT_TEMPLATE_ZH_CN =
-  "你是一位知识丰富、熟悉流行表达的语言学专家，请根据要求结合上下文翻译选中内容。\n\n要求：\n- 从上下文推断源语言，无法确定时默认按英语处理。\n- 结合上下文完整翻译选中内容，然后给出基于上下文的解析，并提取高频词汇和常用短语。\n- 返回内容必须严格按以下顺序组织，不要添加无关内容：最佳翻译、上下文解析、高频词汇和常用短语。\n- 返回内容必须是 Markdown 源码格式。\n\n选中内容：\n{{selection}}\n\n上下文：\n{{context}}";
+  "你是一位知识丰富、熟悉流行表达的语言学专家，请根据要求结合上下文翻译选中内容。\n\n要求：\n- 从上下文推断源语言，无法确定时默认按英语处理。\n- 结合上下文完整翻译选中内容，然后给出基于上下文的解析，并提取高频词汇和常用短语。\n- 返回内容必须严格按以下顺序组织，不要添加无关内容：最佳翻译、上下文解析、高频词汇和常用短语。\n- 返回内容必须是 Markdown 源码格式。";
 
 const DEFAULT_ANALYSIS_PROMPT_TEMPLATE_EN = `You are a rigorous reading-profile analyst. The user enjoys reading and learning from foreign-language content. Based only on the provided recent highlight data, analyze the user's reading preferences and reading style.
 
@@ -351,6 +358,47 @@ export function createDefaultLlmProviderConfigs(): LlmProviderConfigs {
   ) as LlmProviderConfigs;
 }
 
+export const DEFAULT_LLM_TIMEOUT_MS = 30000;
+
+const DEFAULT_LLM_BUSINESS_TEMPERATURES: Record<PromptTemplateType, number> = {
+  lookup: 0.2,
+  translation: 0.2,
+  analysis: 0.5,
+};
+
+export function normalizeLlmBusinessConfig(
+  type: PromptTemplateType,
+  config?: Partial<LlmBusinessConfig>,
+): LlmBusinessConfig {
+  const temperature = config?.temperature;
+  const timeoutMs = config?.timeoutMs;
+
+  return {
+    model: typeof config?.model === "string" ? config.model : "",
+    temperature:
+      typeof temperature === "number" &&
+      Number.isFinite(temperature) &&
+      temperature >= 0 &&
+      temperature <= 2
+        ? temperature
+        : DEFAULT_LLM_BUSINESS_TEMPERATURES[type],
+    timeoutMs:
+      typeof timeoutMs === "number" &&
+      Number.isFinite(timeoutMs) &&
+      timeoutMs > 0
+        ? timeoutMs
+        : DEFAULT_LLM_TIMEOUT_MS,
+  };
+}
+
+export function createDefaultLlmBusinessConfigs(): LlmBusinessConfigs {
+  return {
+    lookup: normalizeLlmBusinessConfig("lookup"),
+    translation: normalizeLlmBusinessConfig("translation"),
+    analysis: normalizeLlmBusinessConfig("analysis"),
+  };
+}
+
 export function getEffectiveLlmConfig(llm: LlmConfig): EffectiveLlmConfig {
   const provider = normalizeLlmProvider(llm.provider);
   const config = normalizeLlmProviderConfig(provider, llm.providers[provider]);
@@ -363,12 +411,34 @@ export function getEffectiveLlmConfig(llm: LlmConfig): EffectiveLlmConfig {
   };
 }
 
+export interface EffectiveLlmBusinessConfig extends EffectiveLlmConfig {
+  temperature: number;
+  timeoutMs: number;
+}
+
+export function getEffectiveLlmBusinessConfig(
+  llm: LlmConfig,
+  type: PromptTemplateType,
+): EffectiveLlmBusinessConfig {
+  const generalConfig = getEffectiveLlmConfig(llm);
+  const businessConfig = normalizeLlmBusinessConfig(
+    type,
+    llm.businesses?.[type],
+  );
+
+  return {
+    ...generalConfig,
+    model: businessConfig.model.trim() || generalConfig.model,
+    temperature: businessConfig.temperature,
+    timeoutMs: businessConfig.timeoutMs,
+  };
+}
+
 export const DEFAULT_SETTINGS: AppSettings = {
   llm: {
     provider: DEFAULT_LLM_PROVIDER,
     providers: createDefaultLlmProviderConfigs(),
-    temperature: 0.2,
-    timeoutMs: 30000,
+    businesses: createDefaultLlmBusinessConfigs(),
     lookupPromptTemplate: getDefaultPromptTemplate("lookup", "en"),
     translationPromptTemplate: getDefaultPromptTemplate("translation", "en"),
     analysisPromptTemplate: getDefaultPromptTemplate("analysis", "en"),
@@ -376,7 +446,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ui: {
     defaultHighlightColor: "yellow",
     language: "en",
-    autoCloseLookupPanelOnCopy: false,
     recordsPageSize: DEFAULT_RECORDS_PAGE_SIZE,
     commonLinks: DEFAULT_COMMON_LINKS.map((link) => ({ ...link })),
   },

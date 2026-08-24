@@ -70,8 +70,6 @@ export const REPORT_ISSUE_URL =
   "https://github.com/ex90rts/remarker/issues/new";
 export const TOAST_DURATION_MS = 1500;
 export const LLM_TEST_ERROR_TOAST_DURATION_MS = 3000;
-const PROMPT_REQUIRED_VARIABLES = ["{{selection}}", "{{context}}"] as const;
-
 export const PROMPT_TEMPLATE_KEYS = {
   lookup: "lookupPromptTemplate",
   translation: "translationPromptTemplate",

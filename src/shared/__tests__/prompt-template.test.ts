@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SETTINGS,
+  createDefaultLlmBusinessConfigs,
   getDefaultPromptTemplate,
+  getEffectiveLlmBusinessConfig,
   getPromptTemplateForSelectionKind,
   isDefaultPromptTemplate,
+  normalizeLlmBusinessConfig,
 } from "../types";
 
 describe("prompt templates", () => {
@@ -15,24 +18,18 @@ describe("prompt templates", () => {
     expect(lookup).not.toBe(translation);
     expect(analysis).not.toBe(lookup);
     expect(analysis).not.toBe(translation);
-    expect(lookup).toContain("{{selection}}");
-    expect(lookup).toContain("{{context}}");
-    expect(translation).toContain("{{selection}}");
-    expect(translation).toContain("{{context}}");
-    expect(lookup).not.toContain("{{task}}");
-    expect(translation).not.toContain("{{task}}");
+    expect(lookup).not.toContain("{{selection}}");
+    expect(lookup).not.toContain("{{context}}");
+    expect(translation).not.toContain("{{selection}}");
+    expect(translation).not.toContain("{{context}}");
     expect(analysis).not.toContain("{{selection}}");
     expect(analysis).not.toContain("{{context}}");
     expect(analysis).toContain("reading-profile analyst");
     expect(analysis).not.toContain("输出语种");
-    expect(lookup).toContain("Selected Word:");
-    expect(translation).toContain("Selected Content:");
-    expect(lookup.indexOf("Requirements:")).toBeLessThan(
-      lookup.indexOf("{{selection}}"),
-    );
-    expect(translation.indexOf("Requirements:")).toBeLessThan(
-      translation.indexOf("{{selection}}"),
-    );
+    expect(lookup).not.toContain("Selected Word:");
+    expect(translation).not.toContain("Selected Content:");
+    expect(lookup).toContain("Requirements:");
+    expect(translation).toContain("Requirements:");
   });
 
   it("provides separate Chinese defaults", () => {
@@ -42,20 +39,18 @@ describe("prompt templates", () => {
 
     expect(lookup).toContain("当前含义");
     expect(translation).toContain("翻译");
-    expect(lookup).not.toContain("{{task}}");
-    expect(translation).not.toContain("{{task}}");
+    expect(lookup).not.toContain("{{selection}}");
+    expect(lookup).not.toContain("{{context}}");
+    expect(translation).not.toContain("{{selection}}");
+    expect(translation).not.toContain("{{context}}");
     expect(analysis).toContain("阅读画像分析师");
     expect(analysis).not.toContain("{{selection}}");
     expect(analysis).not.toContain("{{context}}");
     expect(analysis).not.toContain("输出语种");
-    expect(lookup).toContain("选中词语：");
-    expect(translation).toContain("选中内容：");
-    expect(lookup.indexOf("要求：")).toBeLessThan(
-      lookup.indexOf("{{selection}}"),
-    );
-    expect(translation.indexOf("要求：")).toBeLessThan(
-      translation.indexOf("{{selection}}"),
-    );
+    expect(lookup).not.toContain("选中词语：");
+    expect(translation).not.toContain("选中内容：");
+    expect(lookup).toContain("要求：");
+    expect(translation).toContain("要求：");
   });
 
   it("recognizes both language versions as defaults and stores the English default initially", () => {
@@ -83,5 +78,72 @@ describe("prompt templates", () => {
     expect(
       getPromptTemplateForSelectionKind(DEFAULT_SETTINGS.llm, "text"),
     ).toBe(DEFAULT_SETTINGS.llm.translationPromptTemplate);
+  });
+
+  it("provides separate defaults for each LLM business", () => {
+    const businesses = createDefaultLlmBusinessConfigs();
+
+    expect(businesses.lookup).toEqual({
+      model: "",
+      temperature: 0.2,
+      timeoutMs: 30000,
+    });
+    expect(businesses.translation).toEqual({
+      model: "",
+      temperature: 0.2,
+      timeoutMs: 30000,
+    });
+    expect(businesses.analysis).toEqual({
+      model: "",
+      temperature: 0.5,
+      timeoutMs: 30000,
+    });
+  });
+
+  it("falls back to the general model unless a business model is configured", () => {
+    const withGeneralModel = {
+      ...DEFAULT_SETTINGS.llm,
+      providers: {
+        ...DEFAULT_SETTINGS.llm.providers,
+        [DEFAULT_SETTINGS.llm.provider]: {
+          ...DEFAULT_SETTINGS.llm.providers[DEFAULT_SETTINGS.llm.provider],
+          model: "general-model",
+        },
+      },
+    };
+
+    expect(getEffectiveLlmBusinessConfig(withGeneralModel, "lookup").model).toBe(
+      "general-model",
+    );
+
+    expect(
+      getEffectiveLlmBusinessConfig(
+        {
+          ...withGeneralModel,
+          businesses: {
+            ...withGeneralModel.businesses,
+            lookup: {
+              ...withGeneralModel.businesses.lookup,
+              model: "lookup-model",
+            },
+          },
+        },
+        "lookup",
+      ).model,
+    ).toBe("lookup-model");
+  });
+
+  it("normalizes invalid business sampling and timeout values", () => {
+    expect(
+      normalizeLlmBusinessConfig("analysis", {
+        model: "analysis-model",
+        temperature: 3,
+        timeoutMs: 0,
+      }),
+    ).toEqual({
+      model: "analysis-model",
+      temperature: 0.5,
+      timeoutMs: 30000,
+    });
   });
 });

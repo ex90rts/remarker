@@ -62,7 +62,7 @@ export const en = {
       expand: "Expand sidebar",
     },
     activity: {
-      title: "Learning activity · Last 6 months",
+      title: "Recent learning activity",
       less: "Less",
       more: "More",
       reviewTitle: "Today's review",
@@ -206,26 +206,26 @@ export const en = {
       baseUrl: "Base URL",
       apiKey: "API Key",
       apiKeyHelp: "This configuration is saved only in your browser.",
+      commonModel: "General model",
       model: "Model",
       modelHelp:
         "Fetch and select a model, or enter one manually. Flash or similar models are recommended for faster responses.",
+      businessModelHelp: "Optional; leave blank to use the general model above.",
       advanced: "Advanced settings",
+      advancedSummary:
+        "Configure models and Temperature by use case, and customize prompts.",
       temperature: "Temperature",
       timeoutMs: "Timeout ms",
-      promptTemplate: "Prompt template",
+      promptTemplate: "System prompt",
       promptTemplateType: "Prompt template type",
       promptTemplateTypes: {
         lookup: "Word lookup",
         translation: "Translation",
-        analysis: "AI analysis",
+        analysis: "AI interpretation",
       },
-      promptTemplateHelp:
-        "Available variables: {{selection}}, {{context}}",
       analysisPromptTemplateHelp:
-        "System prompt for reading analysis; no template variables are required.",
+        "System prompt for AI interpretation; no template variables are required.",
       behavior: "Behavior",
-      autoCloseLookupPanelOnCopy:
-        "Automatically close lookup popup after copying",
       language: "Language",
       languageHelp:
         "The selected language is used for the interface and as the LLM translation target language. It is recommended to choose it before you start using the extension and avoid changing it later.",
@@ -260,8 +260,6 @@ export const en = {
     },
     errors: {
       promptTemplateRequired: "Prompt template cannot be empty.",
-      promptTemplateMissingVariables:
-        "Prompt template is missing required variables: {{variables}}",
       llmConfigRequired: "Required configuration: {{fields}}.",
       llmConnectionFailed: "LLM connection test failed: {{reason}}",
       modelListConfigRequired: "Configure these fields first: {{fields}}.",
@@ -285,6 +283,18 @@ export const en = {
     about: {
       releases: {
         title: "Releases",
+        showMore: "Show more",
+        showLess: "Show less",
+        v1_4: {
+          version: "1.4.0",
+          summary: "Adds common links and other detail improvements.",
+          feature1: "Integrates frequently used reading links into Footprints.",
+          feature2: "Adds AI reading-habit analysis to Highlights.",
+          feature3:
+            "Improves LLM configuration with separate settings for different use cases.",
+          feature4:
+            "Refines the recent learning activity presentation in Footprints and other details.",
+        },
         v1_3: {
           version: "1.3.0",
           summary: "Improves configuration and other details.",

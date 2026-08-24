@@ -49,6 +49,7 @@ import {
   getLlmProviderPreset,
   isDefaultPromptTemplate,
   normalizeLlmProvider,
+  normalizeLlmBusinessConfig,
   normalizeLlmProviderConfig,
   normalizeRecordsPageSize,
 } from "../../shared/types";
@@ -62,12 +63,7 @@ import {
   llmOnboardingShimmer,
 } from "../components";
 import type { Notify, RunAction } from "../types";
-import {
-  downloadFile,
-  formatError,
-  getMissingPromptVariables,
-  sendMessage,
-} from "../utils";
+import { downloadFile, formatError, sendMessage } from "../utils";
 
 function getOnboardingCopy(language: AppSettings["ui"]["language"]) {
   const copies = {
@@ -118,6 +114,7 @@ export function SettingsTab({
     useState<PromptTemplateType>("lookup");
   const [isTestingLlm, setIsTestingLlm] = useState(false);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const fetchingModelsRef = useRef(false);
   const [showOnboarding, setShowOnboarding] = useState(
@@ -180,30 +177,12 @@ export function SettingsTab({
   }
 
   async function saveLlmSettings() {
-    if (!settings.llm.analysisPromptTemplate.trim()) {
+    const emptyPromptType = (
+      ["lookup", "translation", "analysis"] as const
+    ).find((type) => !settings.llm[PROMPT_TEMPLATE_KEYS[type]].trim());
+    if (emptyPromptType) {
       const message = t.options.errors.promptTemplateRequired;
-      setPromptTemplateType("analysis");
-      setPromptTemplateError(message);
-      notify(message, "error");
-      return;
-    }
-
-    const invalidPromptTemplate = (
-      [
-        ["lookup", settings.llm.lookupPromptTemplate],
-        ["translation", settings.llm.translationPromptTemplate],
-      ] as const
-    ).find(([, template]) => getMissingPromptVariables(template).length > 0);
-    if (invalidPromptTemplate) {
-      const [type, template] = invalidPromptTemplate;
-      const missingVariables = getMissingPromptVariables(template);
-      const message = interpolate(
-        t.options.errors.promptTemplateMissingVariables,
-        {
-          variables: missingVariables.join(", "),
-        },
-      );
-      setPromptTemplateType(type);
+      setPromptTemplateType(emptyPromptType);
       setPromptTemplateError(message);
       notify(message, "error");
       return;
@@ -298,6 +277,25 @@ export function SettingsTab({
     });
   }
 
+  function updateActiveLlmBusinessConfig(
+    updates: Partial<AppSettings["llm"]["businesses"][PromptTemplateType]>,
+  ) {
+    const currentConfig = settings.llm.businesses[promptTemplateType];
+    setSettings({
+      ...settings,
+      llm: {
+        ...settings.llm,
+        businesses: {
+          ...settings.llm.businesses,
+          [promptTemplateType]: normalizeLlmBusinessConfig(promptTemplateType, {
+            ...currentConfig,
+            ...updates,
+          }),
+        },
+      },
+    });
+  }
+
   function restoreDefaultPromptTemplate() {
     setPromptTemplateError("");
     const promptTemplateKey = PROMPT_TEMPLATE_KEYS[promptTemplateType];
@@ -319,7 +317,7 @@ export function SettingsTab({
     const missingFields = [
       [llm.baseUrl, t.options.settings.baseUrl],
       [llm.apiKey, t.options.settings.apiKey],
-      [llm.model, t.options.settings.model],
+      [llm.model, t.options.settings.commonModel],
     ]
       .filter(([value]) => !value.trim())
       .map(([, label]) => label);
@@ -429,6 +427,7 @@ export function SettingsTab({
   const isCustomLlmProvider = settings.llm.provider === "custom";
   const promptTemplateKey = PROMPT_TEMPLATE_KEYS[promptTemplateType];
   const activePromptTemplate = settings.llm[promptTemplateKey];
+  const activeLlmBusinessConfig = settings.llm.businesses[promptTemplateType];
 
   return (
     <Stack spacing={3} maxWidth={760}>
@@ -723,7 +722,7 @@ export function SettingsTab({
             />
           </SettingsField>
           <SettingsField
-            label={t.options.settings.model}
+            label={t.options.settings.commonModel}
             inputId="settings-llm-model"
             labelAction={
               <Button
@@ -769,6 +768,8 @@ export function SettingsTab({
           <Accordion
             disableGutters
             elevation={0}
+            expanded={isAdvancedExpanded}
+            onChange={(_event, expanded) => setIsAdvancedExpanded(expanded)}
             slotProps={{ heading: { component: "h3" } }}
             sx={{
               border: "1px solid",
@@ -781,65 +782,26 @@ export function SettingsTab({
               expandIcon={<ChevronDown size={18} />}
               aria-controls="settings-llm-advanced-content"
               id="settings-llm-advanced-header"
-              sx={{ px: 2, minHeight: 48 }}
+              sx={{ px: 2, py: 0.5, minHeight: 48 }}
             >
-              <Typography fontWeight={600} variant="body2">
-                {t.options.settings.advanced}
-              </Typography>
+              <Stack spacing={0.25}>
+                <Typography fontWeight={600} variant="body2">
+                  {t.options.settings.advanced}
+                </Typography>
+                {!isAdvancedExpanded && (
+                  <Typography variant="caption" color="text.secondary">
+                    {t.options.settings.advancedSummary}
+                  </Typography>
+                )}
+              </Stack>
             </AccordionSummary>
             <AccordionDetails
               id="settings-llm-advanced-content"
               sx={{ px: 2, pt: 0.5, pb: 2 }}
             >
               <Stack spacing={2.5}>
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5}>
-                  <Box sx={{ flex: 1 }}>
-                    <SettingsField
-                      label={t.options.settings.temperature}
-                      inputId="settings-llm-temperature"
-                    >
-                      <TextField
-                        id="settings-llm-temperature"
-                        type="number"
-                        value={settings.llm.temperature}
-                        onChange={(event) =>
-                          setSettings({
-                            ...settings,
-                            llm: {
-                              ...settings.llm,
-                              temperature: Number(event.target.value),
-                            },
-                          })
-                        }
-                        fullWidth
-                      />
-                    </SettingsField>
-                  </Box>
-                  <Box sx={{ flex: 1 }}>
-                    <SettingsField
-                      label={t.options.settings.timeoutMs}
-                      inputId="settings-llm-timeout"
-                    >
-                      <TextField
-                        id="settings-llm-timeout"
-                        type="number"
-                        value={settings.llm.timeoutMs}
-                        onChange={(event) =>
-                          setSettings({
-                            ...settings,
-                            llm: {
-                              ...settings.llm,
-                              timeoutMs: Number(event.target.value),
-                            },
-                          })
-                        }
-                        fullWidth
-                      />
-                    </SettingsField>
-                  </Box>
-                </Stack>
-                <Stack spacing={0}>
-                  <Box sx={{ mb: "20px" }}>
+                <Stack spacing={2.5}>
+                  <Box>
                     <Tabs
                       value={promptTemplateType}
                       onChange={(_event, value: PromptTemplateType) => {
@@ -876,6 +838,78 @@ export function SettingsTab({
                     </Tabs>
                   </Box>
                   <SettingsField
+                    label={t.options.settings.model}
+                    inputId="settings-business-model"
+                  >
+                    <Autocomplete
+                      freeSolo
+                      options={availableModels}
+                      value={activeLlmBusinessConfig.model || null}
+                      inputValue={activeLlmBusinessConfig.model}
+                      onChange={(_event, value) =>
+                        updateActiveLlmBusinessConfig({ model: value ?? "" })
+                      }
+                      onInputChange={(_event, value) =>
+                        updateActiveLlmBusinessConfig({ model: value })
+                      }
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          id="settings-business-model"
+                          inputProps={{
+                            ...params.inputProps,
+                            id: "settings-business-model",
+                          }}
+                          helperText={t.options.settings.businessModelHelp}
+                        />
+                      )}
+                    />
+                  </SettingsField>
+                  <Stack direction={{ xs: "column", sm: "row" }} spacing={2.5}>
+                    <Box sx={{ flex: 1 }}>
+                      <SettingsField
+                        label={t.options.settings.temperature}
+                        inputId="settings-business-temperature"
+                      >
+                        <TextField
+                          id="settings-business-temperature"
+                          type="number"
+                          value={activeLlmBusinessConfig.temperature}
+                          onChange={(event) =>
+                            updateActiveLlmBusinessConfig({
+                              temperature: Number(event.target.value),
+                            })
+                          }
+                          slotProps={{
+                            htmlInput: { min: 0, max: 2, step: 0.1 },
+                          }}
+                          fullWidth
+                        />
+                      </SettingsField>
+                    </Box>
+                    <Box sx={{ flex: 1 }}>
+                      <SettingsField
+                        label={t.options.settings.timeoutMs}
+                        inputId="settings-business-timeout"
+                      >
+                        <TextField
+                          id="settings-business-timeout"
+                          type="number"
+                          value={activeLlmBusinessConfig.timeoutMs}
+                          onChange={(event) =>
+                            updateActiveLlmBusinessConfig({
+                              timeoutMs: Number(event.target.value),
+                            })
+                          }
+                          slotProps={{
+                            htmlInput: { min: 1, step: 1000 },
+                          }}
+                          fullWidth
+                        />
+                      </SettingsField>
+                    </Box>
+                  </Stack>
+                  <SettingsField
                     label={t.options.settings.promptTemplate}
                     inputId="settings-prompt-template"
                   >
@@ -896,36 +930,45 @@ export function SettingsTab({
                       minRows={12}
                       error={Boolean(promptTemplateError)}
                     />
+                    <Box
+                      sx={{
+                        pt: 0.75,
+                        alignItems: "flex-start",
+                        display: "flex",
+                        gap: 1,
+                        justifyContent: "space-between",
+                        pl: 1.75,
+                      }}
+                    >
+                      {(promptTemplateError ||
+                        promptTemplateType === "analysis") && (
+                        <Typography
+                          variant="caption"
+                          color={
+                            promptTemplateError ? "error" : "text.secondary"
+                          }
+                          sx={{ flex: 1, minWidth: 0, pt: 0.25 }}
+                        >
+                          {promptTemplateError ||
+                            t.options.settings.analysisPromptTemplateHelp}
+                        </Typography>
+                      )}
+                      <Button
+                        variant="text"
+                        size="small"
+                        onClick={restoreDefaultPromptTemplate}
+                        sx={{
+                          flexShrink: 0,
+                          minWidth: "auto",
+                          ml: "auto",
+                          px: 0.75,
+                          py: 0,
+                        }}
+                      >
+                        {t.options.actions.restoreDefault}
+                      </Button>
+                    </Box>
                   </SettingsField>
-                  <Box
-                    sx={{
-                      pt: 0.75,
-                      alignItems: "flex-start",
-                      display: "flex",
-                      gap: 1,
-                      justifyContent: "space-between",
-                      pl: 1.75,
-                    }}
-                  >
-                    <Typography
-                      variant="caption"
-                      color={promptTemplateError ? "error" : "text.secondary"}
-                      sx={{ flex: 1, minWidth: 0, pt: 0.25 }}
-                    >
-                      {promptTemplateError ||
-                        (promptTemplateType === "analysis"
-                          ? t.options.settings.analysisPromptTemplateHelp
-                          : t.options.settings.promptTemplateHelp)}
-                    </Typography>
-                    <Button
-                      variant="text"
-                      size="small"
-                      onClick={restoreDefaultPromptTemplate}
-                      sx={{ flexShrink: 0, minWidth: "auto", px: 0.75, py: 0 }}
-                    >
-                      {t.options.actions.restoreDefault}
-                    </Button>
-                  </Box>
                 </Stack>
               </Stack>
             </AccordionDetails>

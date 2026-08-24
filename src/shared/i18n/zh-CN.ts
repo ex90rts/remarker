@@ -64,7 +64,7 @@ export const zhCN: Messages = {
       expand: "展开",
     },
     activity: {
-      title: "最近 6 个月学习活动",
+      title: "最近学习活动",
       less: "少",
       more: "多",
       reviewTitle: "今日复习",
@@ -203,23 +203,25 @@ export const zhCN: Messages = {
       baseUrl: "Base URL",
       apiKey: "API Key",
       apiKeyHelp: "本配置信息仅会保存到你的浏览器本地。",
+      commonModel: "通用模型",
       model: "模型",
       modelHelp:
         "可以先获取模型后选择，也可以自行输入；建议选用 Flash 或类似模型以加快返回速度。",
+      businessModelHelp: "可选；留空时使用上方的通用模型。",
       advanced: "高级配置",
+      advancedSummary:
+        "按业务场景配置不同模型和 Temperature，自定义提示词。",
       temperature: "Temperature",
       timeoutMs: "超时时间 ms",
-      promptTemplate: "提示词模板",
+      promptTemplate: "System 提示词",
       promptTemplateType: "提示词类型",
       promptTemplateTypes: {
         lookup: "查词",
         translation: "翻译",
-        analysis: "AI 分析",
+        analysis: "AI 解读",
       },
-      promptTemplateHelp: "可用变量：{{selection}}、{{context}}",
-      analysisPromptTemplateHelp: "AI 分析的系统提示词，无需模板变量。",
+      analysisPromptTemplateHelp: "AI 解读的系统提示词，无需模板变量。",
       behavior: "行为",
-      autoCloseLookupPanelOnCopy: "查词弹窗复制后自动关闭",
       language: "语言",
       languageHelp:
         "所选语言为界面语言，同时为大模型翻译的目标语言，建议开始用的时候确定好之后就不要再修改。",
@@ -254,7 +256,6 @@ export const zhCN: Messages = {
     },
     errors: {
       promptTemplateRequired: "提示词模板不能为空。",
-      promptTemplateMissingVariables: "提示词模板缺少必需变量：{{variables}}",
       llmConfigRequired: "必须填写：{{fields}}。",
       llmConnectionFailed: "LLM 连接测试失败：{{reason}}",
       modelListConfigRequired: "请先配置：{{fields}}。",
@@ -276,6 +277,16 @@ export const zhCN: Messages = {
     about: {
       releases: {
         title: "Releases",
+        showMore: "显示更多",
+        showLess: "收起",
+        v1_4: {
+          version: "1.4.0",
+          summary: "新增常用链接功能，其他细节优化。",
+          feature1: "足迹页面整合了常用阅读链接功能。",
+          feature2: "划线页面增加了 AI 阅读习惯分析功能。",
+          feature3: "优化大模型配置，支持不同业务进一步区分配置。",
+          feature4: "优化足迹页面最近学习活动样式等。",
+        },
         v1_3: {
           version: "1.3.0",
           summary: "优化配置功能和其他细节。",

@@ -1,9 +1,8 @@
-import type { HighlightRecord } from "./types";
 import type { SupportedLanguage } from "./i18n";
+import type { HighlightRecord } from "./types";
 
 export const READING_ANALYSIS_HIGHLIGHT_LIMIT = 50;
 export const READING_ANALYSIS_FIELD_LIMIT = 200;
-export const READING_ANALYSIS_TEMPERATURE = 0.5;
 
 const READING_ANALYSIS_OUTPUT_LANGUAGE_NAMES: Record<
   SupportedLanguage,
@@ -14,6 +13,47 @@ const READING_ANALYSIS_OUTPUT_LANGUAGE_NAMES: Record<
   en: "英语",
   es: "西班牙语",
 };
+
+export interface ChatMessage {
+  role: "system" | "user";
+  content: string;
+}
+
+function buildChatMessages(input: {
+  systemPrompt: string;
+  userPrompt: string;
+}): ChatMessage[] {
+  return [
+    { role: "system", content: input.systemPrompt.trim() },
+    { role: "user", content: input.userPrompt },
+  ];
+}
+
+export function buildSelectionChatMessages(input: {
+  systemPrompt: string;
+  targetLanguage: string;
+  selectedText: string;
+  context: string;
+}): ChatMessage[] {
+  return buildChatMessages({
+    systemPrompt: input.systemPrompt,
+    userPrompt: `选中内容：\n${input.selectedText}\n\n上下文：\n${input.context}\n\n回复语种：${input.targetLanguage}`,
+  });
+}
+
+export function buildReadingAnalysisChatMessages(input: {
+  systemPrompt: string;
+  highlights: HighlightRecord[];
+  language: SupportedLanguage;
+}): ChatMessage[] {
+  return buildChatMessages({
+    systemPrompt: input.systemPrompt,
+    userPrompt: buildReadingAnalysisUserPrompt(
+      input.highlights,
+      input.language,
+    ),
+  });
+}
 
 export function buildReadingAnalysisUserPrompt(
   highlights: HighlightRecord[],
@@ -30,11 +70,11 @@ export function buildReadingAnalysisUserPrompt(
       : highlight.sourceUrl;
     const lines = [
       `[${index + 1}]`,
-      `划线文本: ${truncateField(highlight.selectedText)}`,
-      `来源: ${truncateField(source)}`,
+      `划线文本: ${truncateReadingAnalysisField(highlight.selectedText)}`,
+      `来源: ${truncateReadingAnalysisField(source)}`,
     ];
     if (highlight.note?.trim()) {
-      lines.push(`笔记: ${truncateField(highlight.note)}`);
+      lines.push(`笔记: ${truncateReadingAnalysisField(highlight.note)}`);
     }
     return lines.join("\n");
   });
@@ -42,7 +82,7 @@ export function buildReadingAnalysisUserPrompt(
   return `请分析以下最近 ${recentHighlights.length} 条划线数据。每条数据按创建时间从新到旧排列；不要把缺失的笔记当作负面信号。\n分析结果输出语种必须是${outputLanguage}\n\n${records.join("\n\n")}`;
 }
 
-function truncateField(value: string): string {
+function truncateReadingAnalysisField(value: string): string {
   const normalized = value.replace(/\s+/g, " ").trim();
   const characters = Array.from(normalized);
   return characters.length > READING_ANALYSIS_FIELD_LIMIT

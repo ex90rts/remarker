@@ -64,7 +64,7 @@ export const es: Messages = {
       expand: "Expandir",
     },
     activity: {
-      title: "Actividad de aprendizaje · Últimos 6 meses",
+      title: "Actividad de aprendizaje reciente",
       less: "Menos",
       more: "Más",
       reviewTitle: "Repaso de hoy",
@@ -209,26 +209,27 @@ export const es: Messages = {
       baseUrl: "Base URL",
       apiKey: "API Key",
       apiKeyHelp: "Esta configuración solo se guarda localmente en tu navegador.",
+      commonModel: "Modelo general",
       model: "Modelo",
       modelHelp:
         "Obtén y selecciona un modelo, o introdúcelo manualmente. Se recomiendan modelos Flash o similares para obtener respuestas más rápidas.",
+      businessModelHelp:
+        "Opcional; déjalo vacío para usar el modelo general de arriba.",
       advanced: "Configuración avanzada",
+      advancedSummary:
+        "Configura modelos y Temperature por caso de uso y personaliza los prompts.",
       temperature: "Temperature",
       timeoutMs: "Tiempo de espera ms",
-      promptTemplate: "Plantilla de prompt",
+      promptTemplate: "Prompt del sistema",
       promptTemplateType: "Tipo de plantilla de prompt",
       promptTemplateTypes: {
         lookup: "Consulta de palabras",
         translation: "Traducción",
-        analysis: "Análisis con IA",
+        analysis: "Interpretación con IA",
       },
-      promptTemplateHelp:
-        "Variables disponibles: {{selection}}, {{context}}",
       analysisPromptTemplateHelp:
-        "Prompt del sistema para el análisis de lectura; no requiere variables de plantilla.",
+        "Prompt del sistema para la interpretación con IA; no requiere variables de plantilla.",
       behavior: "Comportamiento",
-      autoCloseLookupPanelOnCopy:
-        "Cerrar automáticamente el popup de búsqueda después de copiar",
       language: "Idioma",
       languageHelp:
         "El idioma seleccionado se usa para la interfaz y como idioma de destino de traducción del LLM. Se recomienda elegirlo al empezar a usar la extensión y no cambiarlo después.",
@@ -265,8 +266,6 @@ export const es: Messages = {
     },
     errors: {
       promptTemplateRequired: "La plantilla de prompt no puede estar vacía.",
-      promptTemplateMissingVariables:
-        "A la plantilla de prompt le faltan variables obligatorias: {{variables}}",
       llmConfigRequired: "Configuración obligatoria: {{fields}}.",
       llmConnectionFailed: "Falló la prueba de conexión con el LLM: {{reason}}",
       modelListConfigRequired: "Configura primero estos campos: {{fields}}.",
@@ -291,6 +290,20 @@ export const es: Messages = {
     about: {
       releases: {
         title: "Releases",
+        showMore: "Mostrar más",
+        showLess: "Mostrar menos",
+        v1_4: {
+          version: "1.4.0",
+          summary: "Agrega enlaces habituales y otras mejoras de detalle.",
+          feature1:
+            "Integra enlaces de lectura frecuentes en Huellas.",
+          feature2:
+            "Agrega análisis de hábitos de lectura con IA a Resaltados.",
+          feature3:
+            "Mejora la configuración del modelo de IA con ajustes separados para distintos casos de uso.",
+          feature4:
+            "Mejora la presentación de la actividad de aprendizaje reciente en Huellas y otros detalles.",
+        },
         v1_3: {
           version: "1.3.0",
           summary: "Mejora la configuración y otros detalles.",

@@ -4,6 +4,7 @@ import type {
   FootprintRecord,
   FootprintListItem,
   HighlightRecord,
+  LlmBusinessConfig,
   LlmProvider,
   LlmProviderConfig,
   ReadingAnalysisRecord,
@@ -28,6 +29,7 @@ import {
   createDefaultLlmProviderConfigs,
   getDefaultPromptTemplate,
   isDefaultPromptTemplate,
+  normalizeLlmBusinessConfig,
   normalizeLlmProvider,
   normalizeLlmProviderConfig,
   normalizeRecordsPageSize
@@ -545,10 +547,18 @@ export async function importSnapshot(snapshot: {
   for (const record of snapshot.siteSettings ?? []) await saveSiteSetting(record);
 }
 
-type LegacyLlmConfig = Partial<AppSettings["llm"]> & {
+type LegacyLlmConfig = Omit<
+  Partial<AppSettings["llm"]>,
+  "businesses" | "providers"
+> & {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
+  temperature?: number;
+  timeoutMs?: number;
+  businesses?: Partial<
+    Record<PromptTemplateType, Partial<LlmBusinessConfig>>
+  >;
   providers?: Partial<Record<LlmProvider, Partial<LlmProviderConfig>>>;
 };
 
@@ -576,8 +586,22 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
   const llm: AppSettings["llm"] = {
     provider,
     providers,
-    temperature: incomingLlm?.temperature ?? DEFAULT_SETTINGS.llm.temperature,
-    timeoutMs: incomingLlm?.timeoutMs ?? DEFAULT_SETTINGS.llm.timeoutMs,
+    businesses: {
+      lookup: normalizeLlmBusinessConfig("lookup", {
+        temperature: incomingLlm?.temperature,
+        timeoutMs: incomingLlm?.timeoutMs,
+        ...incomingLlm?.businesses?.lookup,
+      }),
+      translation: normalizeLlmBusinessConfig("translation", {
+        temperature: incomingLlm?.temperature,
+        timeoutMs: incomingLlm?.timeoutMs,
+        ...incomingLlm?.businesses?.translation,
+      }),
+      analysis: normalizeLlmBusinessConfig("analysis", {
+        timeoutMs: incomingLlm?.timeoutMs,
+        ...incomingLlm?.businesses?.analysis,
+      }),
+    },
     lookupPromptTemplate: normalizePromptTemplate(
       "lookup",
       incomingLlm?.lookupPromptTemplate,
@@ -598,9 +622,10 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
   return {
     llm,
     ui: {
-      ...DEFAULT_SETTINGS.ui,
+      defaultHighlightColor:
+        settings?.ui?.defaultHighlightColor ??
+        DEFAULT_SETTINGS.ui.defaultHighlightColor,
       language,
-      ...(settings?.ui ?? {}),
       recordsPageSize: normalizeRecordsPageSize(settings?.ui?.recordsPageSize),
       commonLinks: normalizeCommonLinks(settings?.ui?.commonLinks),
     },
