@@ -81,6 +81,10 @@ import {
 } from "../shared/review";
 import { detectSpeechLanguage, normalizeWord } from "../shared/word";
 import { getPronunciationAudioUrl } from "../shared/pronunciation";
+import {
+  RSS_ARTICLE_CACHE_LIMIT,
+  RSS_RESOURCES,
+} from "../shared/rss-resources";
 
 const TARGET_LANGUAGE_NAMES: Record<AppSettings["ui"]["language"], string> = {
   "zh-CN": "Simplified Chinese",
@@ -90,8 +94,11 @@ const TARGET_LANGUAGE_NAMES: Record<AppSettings["ui"]["language"], string> = {
 };
 
 const REVIEW_ALARM = "remarker-review-reminder";
+const RSS_REFRESH_ALARM = "remarker-rss-refresh";
+const RSS_ARTICLE_CACHE_KEY = "rssArticleUrls";
 
 void ensureReviewAlarm();
+void ensureRssRefreshAlarm();
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   const cache = await chrome.storage.local.get([
@@ -105,6 +112,8 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
     schemaVersion: Math.max(cache.schemaVersion ?? 0, SCHEMA_VERSION),
   });
   await ensureReviewAlarm();
+  await ensureRssRefreshAlarm();
+  void refreshRssArticles();
   await refreshReviewBadge();
   if (reason === "install") {
     await chrome.tabs.create({
@@ -115,12 +124,22 @@ chrome.runtime.onInstalled.addListener(async ({ reason }) => {
 
 chrome.runtime.onStartup.addListener(() => {
   void ensureReviewAlarm();
+  void ensureRssRefreshAlarm();
+  void refreshRssArticles();
   void refreshReviewBadge();
 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === REVIEW_ALARM) void handleReviewAlarm();
+  if (alarm.name === RSS_REFRESH_ALARM) void refreshRssArticles();
 });
+
+async function ensureRssRefreshAlarm(): Promise<void> {
+  const existing = await chrome.alarms.get(RSS_REFRESH_ALARM);
+  if (existing?.periodInMinutes === 24 * 60) return;
+  if (existing) await chrome.alarms.clear(RSS_REFRESH_ALARM);
+  await chrome.alarms.create(RSS_REFRESH_ALARM, { periodInMinutes: 24 * 60 });
+}
 
 async function ensureReviewAlarm(): Promise<void> {
   const existing = await chrome.alarms.get(REVIEW_ALARM);
@@ -360,6 +379,9 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
       });
       return { opened: true };
 
+    case "OPEN_LUCKY_ARTICLE":
+      return openLuckyArticle();
+
     case "LIST_ALL_DATA": {
       const [highlights, vocabulary, footprints, settings] =
         await Promise.all([
@@ -384,6 +406,81 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
 
 const COMMON_LINK_TITLE_TIMEOUT_MS = 8_000;
 const COMMON_LINK_TITLE_MAX_BYTES = 128 * 1024;
+const RSS_FETCH_TIMEOUT_MS = 12_000;
+
+interface CachedRssArticles {
+  urls: string[];
+  updatedAt: string;
+}
+
+async function openLuckyArticle(): Promise<{ opened: boolean }> {
+  const cached = await chrome.storage.local.get(RSS_ARTICLE_CACHE_KEY);
+  let urls = parseCachedRssArticleUrls(cached[RSS_ARTICLE_CACHE_KEY]);
+  if (urls.length === 0) urls = await refreshRssArticles();
+  if (urls.length === 0) {
+    throw new Error("No reading articles are available yet. Please try again shortly.");
+  }
+  await chrome.tabs.create({ url: urls[Math.floor(Math.random() * urls.length)] });
+  return { opened: true };
+}
+
+async function refreshRssArticles(): Promise<string[]> {
+  const results = await Promise.allSettled(
+    RSS_RESOURCES.map((resource) => fetchRssArticleUrls(resource.url)),
+  );
+  const urls = [...new Set(
+    results.flatMap((result) => result.status === "fulfilled" ? result.value : []),
+  )].slice(0, RSS_ARTICLE_CACHE_LIMIT);
+  if (urls.length > 0) {
+    const value: CachedRssArticles = { urls, updatedAt: new Date().toISOString() };
+    await chrome.storage.local.set({ [RSS_ARTICLE_CACHE_KEY]: value });
+  }
+  return urls;
+}
+
+function parseCachedRssArticleUrls(value: unknown): string[] {
+  if (!value || typeof value !== "object" || !("urls" in value)) return [];
+  const urls = (value as { urls?: unknown }).urls;
+  return Array.isArray(urls) ? urls.filter(isHttpUrl) : [];
+}
+
+async function fetchRssArticleUrls(feedUrl: string): Promise<string[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), RSS_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(feedUrl, { signal: controller.signal });
+    if (!response.ok) return [];
+    return extractRssArticleUrls(await response.text());
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractRssArticleUrls(xml: string): string[] {
+  const entries = xml.match(/<(?:item|entry)\b[\s\S]*?<\/(?:item|entry)>/gi) ?? [];
+  return entries.flatMap((entry) => {
+    const atomLink = entry.match(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/i)?.[1];
+    const rssLink = entry.match(/<link\b[^>]*>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/link>/i)?.[1];
+    const url = decodeXmlEntities((atomLink ?? rssLink ?? "").trim());
+    return isHttpUrl(url) ? [url] : [];
+  });
+}
+
+function decodeXmlEntities(value: string): string {
+  return value.replace(/&amp;/gi, "&").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'");
+}
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 async function fetchCommonLinkTitle(
   value: string,

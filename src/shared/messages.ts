@@ -66,6 +66,7 @@ export type RuntimeMessage =
   | { type: "TEST_LLM_CONNECTION"; settings: AppSettings }
   | { type: "GET_LLM_MODELS"; settings: AppSettings }
   | { type: "OPEN_SETTINGS_PAGE" }
+  | { type: "OPEN_LUCKY_ARTICLE" }
   | { type: "LIST_ALL_DATA" }
   | {
       type: "IMPORT_SNAPSHOT";

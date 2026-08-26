@@ -27,6 +27,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronRight,
+  Dices,
   ExternalLink,
   GripVertical,
   Plus,
@@ -1137,15 +1138,29 @@ export function FootprintsTab({
           </>
         }
         actions={
-          <Button
-            variant="outlined"
-            startIcon={<RefreshCcw size={16} />}
-            onClick={() =>
-              void runAction(onChange, t.options.notices.dataRefreshed)
-            }
-          >
-            {t.common.refresh}
-          </Button>
+          <>
+            <Button
+              variant="contained"
+              startIcon={<Dices size={16} />}
+              onClick={() =>
+                void runAction(
+                  () => sendMessage({ type: "OPEN_LUCKY_ARTICLE" }),
+                  t.options.notices.luckyArticleOpened,
+                )
+              }
+            >
+              {t.options.actions.feelingLucky}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshCcw size={16} />}
+              onClick={() =>
+                void runAction(onChange, t.options.notices.dataRefreshed)
+              }
+            >
+              {t.common.refresh}
+            </Button>
+          </>
         }
       />
       <Table size="small" sx={{ tableLayout: "fixed", width: "100%" }}>
