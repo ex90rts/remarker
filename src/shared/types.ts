@@ -104,6 +104,8 @@ export interface HighlightRecord {
   anchor: TextAnchor;
   status: HighlightStatus;
   note?: string;
+  /** JSON-encoded language chunk items generated after the highlight is saved. */
+  languageChunks?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -143,7 +145,11 @@ export interface VocabularyRecord {
   updatedAt: string;
 }
 
-export type PromptTemplateType = "lookup" | "translation" | "analysis";
+export type PromptTemplateType =
+  | "lookup"
+  | "translation"
+  | "analysis"
+  | "chunkAnalysis";
 
 export interface LlmBusinessConfig {
   /** Empty means the active provider's general model. */
@@ -161,6 +167,7 @@ export interface LlmConfig {
   lookupPromptTemplate: string;
   translationPromptTemplate: string;
   analysisPromptTemplate: string;
+  chunkAnalysisPromptTemplate: string;
 }
 
 export interface ExportSettings {
@@ -268,6 +275,41 @@ const DEFAULT_ANALYSIS_PROMPT_TEMPLATE_ZH_CN = `你是一名严谨的阅读画�
 
 请区分直接证据与推测性判断，引用有代表性的划线编号；样本不足时必须明确说明。不要对用户的身份或人格作出诊断式结论。返回内容应简洁、结构清晰，并使用 Markdown 格式。`;
 
+const LEGACY_DEFAULT_CHUNK_ANALYSIS_PROMPT_TEMPLATE =
+  "你是一位知识丰富、熟悉流行表达的语言学专家，请从以下语句中分析语块（Language Chunks），使用列表格式分别列出“语块：表达含义/使用场景”，请使用 Markdown 格式返回。";
+
+export const DEFAULT_CHUNK_ANALYSIS_PROMPT_TEMPLATE_ZH_CN = `你是一位知识丰富、熟悉流行表达的语言学专家，请从以下语句中分析语块（Language Chunks），按照常用程度最多提取 5 个语块，分析其表达含义和使用场景，严格按照以下示例 JSON 格式返回（直接返回 JSON，不要用 Markdown 的代码块包裹）：
+\`\`\`json
+[
+    {
+        "chunk": "hold up",
+        "meaning": "站得住脚的",
+        "useCases": "用于评价某个观点、证据、模式能否经得起仔细核验和实践的验证"
+    },
+    {
+        "chunk": "leaving his audiences with practical insights",
+        "meaning": "给听众留下可行的洞察",
+        "useCases": "用于评价演讲、教学、分享等场景下的效果"
+    }
+]
+\`\`\``;
+
+export const DEFAULT_CHUNK_ANALYSIS_PROMPT_TEMPLATE_EN = `You are a knowledgeable linguistics expert familiar with popular expressions. Analyze the following sentence for Language Chunks. Extract at most 5 chunks in order of common usage, then explain their meanings and usage scenarios in Simplified Chinese. Return strictly in the following example JSON format (return JSON directly without wrapping it in a Markdown code block):
+\`\`\`json
+[
+    {
+        "chunk": "hold up",
+        "meaning": "站得住脚的",
+        "useCases": "用于评价某个观点、证据、模式能否经得起仔细核验和实践的验证"
+    },
+    {
+        "chunk": "leaving his audiences with practical insights",
+        "meaning": "给听众留下可行的洞察",
+        "useCases": "用于评价演讲、教学、分享等场景下的效果"
+    }
+]
+\`\`\``;
+
 function shouldUseChineseDefaultPrompt(language?: SupportedLanguage): boolean {
   return language === "zh-CN" || language === "zh-TW";
 }
@@ -282,11 +324,13 @@ export function getDefaultPromptTemplate(
           lookup: DEFAULT_LOOKUP_PROMPT_TEMPLATE_ZH_CN,
           translation: DEFAULT_TRANSLATION_PROMPT_TEMPLATE_ZH_CN,
           analysis: DEFAULT_ANALYSIS_PROMPT_TEMPLATE_ZH_CN,
+          chunkAnalysis: DEFAULT_CHUNK_ANALYSIS_PROMPT_TEMPLATE_ZH_CN,
         }
       : {
           lookup: DEFAULT_LOOKUP_PROMPT_TEMPLATE_EN,
           translation: DEFAULT_TRANSLATION_PROMPT_TEMPLATE_EN,
           analysis: DEFAULT_ANALYSIS_PROMPT_TEMPLATE_EN,
+          chunkAnalysis: DEFAULT_CHUNK_ANALYSIS_PROMPT_TEMPLATE_EN,
         };
   return defaults[type];
 }
@@ -298,6 +342,9 @@ export function isDefaultPromptTemplate(
   return [
     getDefaultPromptTemplate(type, "en"),
     getDefaultPromptTemplate(type, "zh-CN"),
+    ...(type === "chunkAnalysis"
+      ? [LEGACY_DEFAULT_CHUNK_ANALYSIS_PROMPT_TEMPLATE]
+      : []),
   ].includes(promptTemplate);
 }
 
@@ -364,6 +411,7 @@ const DEFAULT_LLM_BUSINESS_TEMPERATURES: Record<PromptTemplateType, number> = {
   lookup: 0.2,
   translation: 0.2,
   analysis: 0.5,
+  chunkAnalysis: 0.2,
 };
 
 export function normalizeLlmBusinessConfig(
@@ -396,6 +444,7 @@ export function createDefaultLlmBusinessConfigs(): LlmBusinessConfigs {
     lookup: normalizeLlmBusinessConfig("lookup"),
     translation: normalizeLlmBusinessConfig("translation"),
     analysis: normalizeLlmBusinessConfig("analysis"),
+    chunkAnalysis: normalizeLlmBusinessConfig("chunkAnalysis"),
   };
 }
 
@@ -442,6 +491,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     lookupPromptTemplate: getDefaultPromptTemplate("lookup", "en"),
     translationPromptTemplate: getDefaultPromptTemplate("translation", "en"),
     analysisPromptTemplate: getDefaultPromptTemplate("analysis", "en"),
+    chunkAnalysisPromptTemplate: getDefaultPromptTemplate("chunkAnalysis", "en"),
   },
   ui: {
     defaultHighlightColor: "yellow",

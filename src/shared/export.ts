@@ -3,6 +3,7 @@ import type {
   HighlightRecord,
   VocabularyRecord,
 } from "./types";
+import { formatLanguageChunksAsMarkdown } from "./language-chunks";
 import { SCHEMA_VERSION } from "./types";
 
 export function createBackupJson(input: {
@@ -102,6 +103,14 @@ function appendGroupedHighlights(
     for (const highlight of records) {
       const quote = highlight.selectedText.split("\n").map((line) => `> ${line}`).join("\n");
       lines.push(quote, "");
+      if (highlight.languageChunks) {
+        const languageChunks = formatLanguageChunksAsMarkdown(
+          highlight.languageChunks,
+        );
+        if (languageChunks) {
+          lines.push("**Language Chunks:**", "", languageChunks, "");
+        }
+      }
       if (highlight.note) lines.push(`**Note:** ${highlight.note}`, "");
       lines.push(
         format === "obsidian"

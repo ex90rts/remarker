@@ -18,9 +18,11 @@ export type RuntimeMessage =
   | { type: "GET_FOOTPRINT"; sourceUrl: string }
   | { type: "ADD_FOOTPRINT"; sourceUrl: string; sourceTitle: string }
   | { type: "SAVE_HIGHLIGHT"; record: HighlightRecord }
+  | { type: "REGENERATE_HIGHLIGHT_LANGUAGE_CHUNKS"; id: string }
   | { type: "UPDATE_HIGHLIGHT_STATUS"; id: string; status: HighlightStatus }
   | { type: "UPDATE_HIGHLIGHT_COLOR"; id: string; color: HighlightColor }
   | { type: "UPDATE_HIGHLIGHT_NOTE"; id: string; note: string }
+  | { type: "UPDATE_HIGHLIGHT_LANGUAGE_CHUNKS"; id: string; languageChunks: string }
   | {
       type: "UPDATE_HIGHLIGHT_STATUSES";
       updates: Array<{ id: string; status: HighlightStatus }>;
@@ -55,6 +57,8 @@ export type RuntimeMessage =
       sourceTitle: string;
       anchor?: TextAnchor;
       forceRefresh?: boolean;
+      /** Generate an explanation without changing vocabulary or footprints. */
+      previewOnly?: boolean;
     }
   | { type: "GET_PRONUNCIATION"; word: string; language?: string }
   | { type: "GET_YOUDAO_PRONUNCIATION"; word: string }

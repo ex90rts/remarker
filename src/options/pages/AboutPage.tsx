@@ -7,6 +7,15 @@ export function AboutTab({ t }: { t: Messages }) {
   const [showAllReleases, setShowAllReleases] = useState(false);
   const releases = [
     {
+      version: t.options.about.releases.v1_5.version,
+      summary: t.options.about.releases.v1_5.summary,
+      features: [
+        t.options.about.releases.v1_5.feature1,
+        t.options.about.releases.v1_5.feature2,
+        t.options.about.releases.v1_5.feature3,
+      ],
+    },
+    {
       version: t.options.about.releases.v1_4.version,
       summary: t.options.about.releases.v1_4.summary,
       features: [

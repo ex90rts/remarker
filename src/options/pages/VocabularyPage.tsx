@@ -20,9 +20,11 @@ import {
   ChevronRight,
   RefreshCcw,
   RotateCcw,
+  Sparkles,
   SquarePen,
   Volume2,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   createNotionTranslationExport,
@@ -32,7 +34,6 @@ import {
 } from "../../shared/export";
 import type { Messages } from "../../shared/i18n";
 import { interpolate } from "../../shared/i18n";
-import { markdownToSafeHtml } from "../../shared/markdown";
 import type { DataQuery, ListAllDataResult } from "../../shared/messages";
 import { playPronunciation } from "../../shared/pronunciation";
 import type {
@@ -47,15 +48,16 @@ import {
   CopyIconButton,
   EmptyTableRow,
   ExportDropdownButton,
+  MarkdownBody,
   RecordsTablePagination,
   SourceLink,
   TableActionBar,
-  markdownBodySx,
   renderHighlightedContext,
   twoLineClampSx,
 } from "../components";
 import { useRuntimeQuery, useValidServerPage } from "../hooks";
 import type { Notify, RunAction, SourceFilterNavigation } from "../types";
+import { VocabularyReExplainDialog } from "../VocabularyReExplainDialog";
 import {
   downloadFile,
   formatCreatedAt,
@@ -117,21 +119,8 @@ export function VocabularyTab({
     refreshRevision,
   );
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
-  const [editingTranslationId, setEditingTranslationId] = useState<string>();
-  const [translationDraft, setTranslationDraft] = useState("");
+  const [reExplainRecord, setReExplainRecord] = useState<VocabularyRecord>();
   const hasFilters = Boolean(wordFilter || contextFilter || sourceFilter);
-
-  async function saveTranslation(item: VocabularyRecord): Promise<void> {
-    await runAction(async () => {
-      await sendMessage({
-        type: "UPDATE_VOCABULARY_TRANSLATION",
-        id: item.id,
-        translation: translationDraft,
-      });
-      setEditingTranslationId(undefined);
-      await onChange();
-    }, t.options.notices.explanationSaved);
-  }
 
   useEffect(
     () => setPage(0),
@@ -296,7 +285,6 @@ export function VocabularyTab({
                       }
                       onClick={() =>
                         setExpandedRows((rows) => {
-                          if (rows[item.id]) setEditingTranslationId(undefined);
                           return {
                             ...rows,
                             [item.id]: !rows[item.id],
@@ -413,167 +401,16 @@ export function VocabularyTab({
                       timeout="auto"
                       unmountOnExit
                     >
-                      <Box sx={{ px: 2, py: 1.5, ml: 5 }}>
-                        <Box
-                          sx={{
-                            bgcolor: "#f8fafc",
-                            border: "1px solid #e2e8f0",
-                            borderRadius: 1,
-                            p: 1.5,
-                            mb: 1.5,
-                          }}
-                        >
-                          <Typography
-                            variant="caption"
-                            color="text.secondary"
-                            component="div"
-                            sx={{ mb: 0.5 }}
-                          >
-                            {t.options.columns.context}
-                          </Typography>
-                          <Typography
-                            variant="body2"
-                            sx={{
-                              whiteSpace: "pre-wrap",
-                              overflowWrap: "anywhere",
-                            }}
-                          >
-                            {renderHighlightedContext(
-                              item.contextSentence || t.common.empty,
-                              item.word,
-                            )}
-                          </Typography>
-                        </Box>
-                        {isTranslation && (
-                          <Box
-                            sx={{
-                              bgcolor: "#f8fafc",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: 1,
-                              p: 1.5,
-                              mb: 1.5,
-                            }}
-                          >
-                            <Typography
-                              variant="caption"
-                              color="text.secondary"
-                              component="div"
-                              sx={{ mb: 0.5 }}
-                            >
-                              {t.options.columns.original}
-                            </Typography>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                whiteSpace: "pre-wrap",
-                                overflowWrap: "anywhere",
-                              }}
-                            >
-                              {item.word || t.common.empty}
-                            </Typography>
-                          </Box>
-                        )}
-                        <Stack
-                          direction="row"
-                          justifyContent="space-between"
-                          alignItems="center"
-                          sx={{
-                            mb: 0.5,
-                            pb: 0.5,
-                            borderBottom: "1px solid #dadada",
-                          }}
-                        >
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              color: "#000",
-                              fontSize: "1em",
-                              fontWeight: 700,
-                            }}
-                          >
-                            {isTranslation
-                              ? t.content.translation
-                              : t.content.explanation}
-                          </Typography>
-                          <Stack direction="row" spacing={0.5}>
-                            <IconButton
-                              size="small"
-                              aria-label={t.options.actions.editExplanation}
-                              title={t.options.actions.editExplanation}
-                              onClick={() => {
-                                setTranslationDraft(item.translation || "");
-                                setEditingTranslationId(item.id);
-                              }}
-                            >
-                              <SquarePen size={16} />
-                            </IconButton>
-                            <CopyIconButton
-                              label={t.options.actions.copyExplanation}
-                              text={item.translation || ""}
-                              notify={notify}
-                              t={t}
-                            />
-                          </Stack>
-                        </Stack>
-                        {editingTranslationId === item.id ? (
-                          <Stack spacing={1}>
-                            <TextField
-                              autoFocus
-                              fullWidth
-                              multiline
-                              minRows={5}
-                              value={translationDraft}
-                              label={
-                                isTranslation
-                                  ? t.content.translation
-                                  : t.content.explanation
-                              }
-                              onChange={(event) =>
-                                setTranslationDraft(event.target.value)
-                              }
-                            />
-                            <Stack
-                              direction="row"
-                              justifyContent="flex-end"
-                              spacing={1}
-                            >
-                              <Button
-                                size="small"
-                                onClick={() =>
-                                  setEditingTranslationId(undefined)
-                                }
-                              >
-                                {t.common.cancel}
-                              </Button>
-                              <Button
-                                size="small"
-                                variant="contained"
-                                onClick={() => void saveTranslation(item)}
-                              >
-                                {t.options.actions.saveExplanation}
-                              </Button>
-                            </Stack>
-                          </Stack>
-                        ) : (
-                          <Box
-                            className="markdown-body"
-                            sx={{
-                              color: item.translation
-                                ? "text.primary"
-                                : "text.secondary",
-                              fontSize: 14,
-                              lineHeight: 1.65,
-                              overflowWrap: "anywhere",
-                              ...markdownBodySx,
-                            }}
-                            dangerouslySetInnerHTML={{
-                              __html: markdownToSafeHtml(
-                                item.translation || t.common.empty,
-                              ),
-                            }}
-                          />
-                        )}
-                      </Box>
+                      <VocabularyExpandedDetails
+                        item={item}
+                        isTranslation={isTranslation}
+                        recordLabel={recordLabel}
+                        onChange={onChange}
+                        runAction={runAction}
+                        notify={notify}
+                        onReExplain={() => setReExplainRecord(item)}
+                        t={t}
+                      />
                     </Collapse>
                   </TableCell>
                 </TableRow>
@@ -595,7 +432,281 @@ export function VocabularyTab({
           </TableFooter>
         )}
       </Table>
+      {reExplainRecord && (
+        <VocabularyReExplainDialog
+          open
+          record={reExplainRecord}
+          onClose={() => setReExplainRecord(undefined)}
+          onReplaced={() => {
+            void runAction(onChange, t.options.notices.explanationSaved);
+          }}
+          t={t}
+        />
+      )}
     </Stack>
+  );
+}
+
+function VocabularyExpandedDetails({
+  item,
+  isTranslation,
+  recordLabel,
+  onChange,
+  runAction,
+  notify,
+  onReExplain,
+  t,
+}: {
+  item: VocabularyRecord;
+  isTranslation: boolean;
+  recordLabel: string;
+  onChange: () => Promise<void>;
+  runAction: RunAction;
+  notify: Notify;
+  onReExplain: () => void;
+  t: Messages;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(item.translation ?? "");
+
+  useEffect(() => {
+    if (!isEditing) setDraft(item.translation ?? "");
+  }, [isEditing, item.translation]);
+
+  async function saveExplanation(): Promise<void> {
+    await runAction(async () => {
+      await sendMessage({
+        type: "UPDATE_VOCABULARY_TRANSLATION",
+        id: item.id,
+        translation: draft,
+      });
+      setIsEditing(false);
+      await onChange();
+    }, t.options.notices.explanationSaved);
+  }
+
+  return (
+    <Box
+      sx={{
+        mx: { xs: 0, sm: 2 },
+        my: 1.25,
+        px: { xs: 1.5, sm: 2 },
+        pt: 1.75,
+        pb: 1.5,
+        bgcolor: "#f8faff",
+        border: "1px solid",
+        borderColor: "divider",
+        borderLeft: "3px solid",
+        borderLeftColor: "primary.main",
+        borderRadius: "4px 10px 10px 4px",
+        boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.8)",
+        color: "text.primary",
+      }}
+    >
+      <Box component="section">
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mb: 0.5, fontWeight: 700 }}
+        >
+          {recordLabel}
+        </Typography>
+        <Typography
+          component={isTranslation ? "blockquote" : "div"}
+          sx={{
+            m: 0,
+            fontFamily: "Georgia, 'Noto Serif', serif",
+            fontSize: isTranslation
+              ? { xs: "0.96rem", sm: "1.02rem" }
+              : { xs: "1.08rem", sm: "1.18rem" },
+            fontWeight: 500,
+            lineHeight: 1.7,
+            letterSpacing: "0.005em",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {item.word || t.common.empty}
+        </Typography>
+      </Box>
+
+      <Stack spacing={1.25} sx={{ mt: 1.75 }}>
+        <VocabularyDetailSection label={t.options.columns.context}>
+          <Typography
+            variant="body2"
+            sx={{
+              py: 0.5,
+              lineHeight: 1.65,
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+            }}
+          >
+            {renderHighlightedContext(
+              item.contextSentence || t.common.empty,
+              item.word,
+            )}
+          </Typography>
+        </VocabularyDetailSection>
+
+        <VocabularyDetailSection
+          label={isTranslation ? t.content.translation : t.content.explanation}
+          actions={
+            !isEditing ? (
+              <>
+                {!isTranslation && (
+                  <IconButton
+                    size="small"
+                    aria-label={t.options.actions.reExplain}
+                    title={t.options.actions.reExplain}
+                    onClick={onReExplain}
+                    sx={{ color: "text.secondary" }}
+                  >
+                    <Sparkles size={16} />
+                  </IconButton>
+                )}
+                <IconButton
+                  size="small"
+                  aria-label={t.options.actions.editExplanation}
+                  title={t.options.actions.editExplanation}
+                  onClick={() => {
+                    setDraft(item.translation ?? "");
+                    setIsEditing(true);
+                  }}
+                  sx={{ color: "text.secondary" }}
+                >
+                  <SquarePen size={16} />
+                </IconButton>
+                <CopyIconButton
+                  label={t.options.actions.copyExplanation}
+                  text={item.translation ?? ""}
+                  notify={notify}
+                  t={t}
+                />
+              </>
+            ) : undefined
+          }
+        >
+          {isEditing ? (
+            <Stack spacing={1}>
+              <TextField
+                autoFocus
+                fullWidth
+                multiline
+                minRows={5}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+              />
+              <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setDraft(item.translation ?? "");
+                    setIsEditing(false);
+                  }}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() => void saveExplanation()}
+                >
+                  {t.options.actions.saveExplanation}
+                </Button>
+              </Stack>
+            </Stack>
+          ) : item.translation ? (
+            <MarkdownBody
+              markdown={item.translation}
+              sx={{
+                fontSize: 14,
+                lineHeight: 1.65,
+                overflowWrap: "anywhere",
+                "& > :first-of-type": { mt: 0.5 },
+                "& > :last-child": { mb: 0 },
+              }}
+            />
+          ) : (
+            <Typography
+              variant="body2"
+              color="text.disabled"
+              sx={{ py: 0.5, fontStyle: "italic" }}
+            >
+              {t.common.empty}
+            </Typography>
+          )}
+        </VocabularyDetailSection>
+      </Stack>
+
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={{ xs: 0.5, sm: 2 }}
+        justifyContent="space-between"
+        sx={{
+          mt: 1.5,
+          pt: 1.25,
+          borderTop: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        <Typography component="div" variant="caption" color="text.secondary">
+          <Box component="span" sx={{ fontWeight: 700, mr: 0.75 }}>
+            {t.options.columns.source}
+          </Box>
+          <SourceLink
+            href={item.sourceUrl}
+            label={item.sourceTitle || item.sourceUrl}
+            truncate={false}
+          />
+        </Typography>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ flexShrink: 0 }}
+        >
+          {t.common.created} {formatCreatedAt(item.createdAt)}
+        </Typography>
+      </Stack>
+    </Box>
+  );
+}
+
+function VocabularyDetailSection({
+  label,
+  actions,
+  children,
+}: {
+  label: string;
+  actions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Box
+      component="section"
+      sx={{
+        pt: 1.25,
+        pb: 0.5,
+        borderTop: "1px solid",
+        borderColor: "divider",
+      }}
+    >
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        sx={{ minHeight: 28 }}
+      >
+        <Typography variant="caption" color="text.secondary" fontWeight={700}>
+          {label}
+        </Typography>
+        {actions && (
+          <Stack direction="row" spacing={1} sx={{ ml: "auto !important" }}>
+            {actions}
+          </Stack>
+        )}
+      </Stack>
+      <Box sx={{ minWidth: 0 }}>{children}</Box>
+    </Box>
   );
 }
 
@@ -603,16 +714,19 @@ export function VocabularyReviewView({
   language,
   vocabularyCount,
   onChange,
+  t,
 }: {
   language: AppSettings["ui"]["language"];
   vocabularyCount: number;
   onChange: () => Promise<void>;
+  t: Messages;
 }) {
   const copy = getReviewCopy(language);
   const [queue, setQueue] = useState<VocabularyRecord[]>([]);
   const [flipped, setFlipped] = useState(false);
   const [isEditingExplanation, setIsEditingExplanation] = useState(false);
   const [explanationDraft, setExplanationDraft] = useState("");
+  const [isReExplainOpen, setIsReExplainOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [dueCount, setDueCount] = useState(0);
@@ -637,6 +751,7 @@ export function VocabularyReviewView({
     setNextReviewAt(status.nextReviewAt);
     setFlipped(false);
     setIsEditingExplanation(false);
+    setIsReExplainOpen(false);
     setExplanationDraft("");
     setLoading(false);
   }
@@ -679,6 +794,7 @@ export function VocabularyReviewView({
       setDueCount((count) => Math.max(0, count - 1));
       setFlipped(false);
       setIsEditingExplanation(false);
+      setIsReExplainOpen(false);
       setExplanationDraft("");
       await onChange();
       if (queue.length === 1) await loadQueue();
@@ -799,8 +915,19 @@ export function VocabularyReviewView({
                   </Stack>
                 </Stack>
               ) : (
-                <Stack spacing={0.75} width="100%">
-                  <Stack direction="row" justifyContent="flex-end">
+                <Stack spacing={1} width="100%">
+                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                    <IconButton
+                      size="small"
+                      aria-label={t.options.actions.reExplain}
+                      title={t.options.actions.reExplain}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsReExplainOpen(true);
+                      }}
+                    >
+                      <Sparkles size={16} />
+                    </IconButton>
                     <IconButton
                       size="small"
                       aria-label={copy.editExplanation}
@@ -814,13 +941,7 @@ export function VocabularyReviewView({
                       <SquarePen size={16} />
                     </IconButton>
                   </Stack>
-                  <Box
-                    className="markdown-body"
-                    sx={markdownBodySx}
-                    dangerouslySetInnerHTML={{
-                      __html: markdownToSafeHtml(current.translation || ""),
-                    }}
-                  />
+                  <MarkdownBody markdown={current.translation || ""} />
                 </Stack>
               )}
               <Typography variant="caption" color="text.secondary">
@@ -856,6 +977,21 @@ export function VocabularyReviewView({
           {copy.skilled}
         </Button>
       </Stack>
+      <VocabularyReExplainDialog
+        open={isReExplainOpen}
+        record={current}
+        onClose={() => setIsReExplainOpen(false)}
+        onReplaced={(translation) => {
+          setQueue((records) =>
+            records.map((record) =>
+              record.id === current.id ? { ...record, translation } : record,
+            ),
+          );
+          setIsEditingExplanation(false);
+          void onChange();
+        }}
+        t={t}
+      />
     </Stack>
   );
 }

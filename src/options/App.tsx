@@ -514,6 +514,7 @@ export function App() {
                       language={language}
                       vocabularyCount={counts.vocabulary}
                       onChange={reload}
+                      t={t}
                     />
                   ))}
                 {tab === "translations" && (

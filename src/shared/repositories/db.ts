@@ -375,7 +375,10 @@ export async function updateHighlightStatuses(
 
 export function queryHighlights(query: DataQuery): Promise<QueryResult<HighlightRecord>> {
   return queryStoreByCreatedAt<HighlightRecord>("highlights", query, (record) =>
-    includesQuery(record.selectedText, query.word) &&
+    includesQuery(
+      `${record.selectedText} ${record.languageChunks ?? ""}`,
+      query.word,
+    ) &&
     includesQuery(`${record.sourceTitle} ${record.sourceUrl}`, query.source) &&
     (!query.color || record.color === query.color),
   );
@@ -562,7 +565,9 @@ type LegacyLlmConfig = Omit<
   providers?: Partial<Record<LlmProvider, Partial<LlmProviderConfig>>>;
 };
 
-function normalizeSettings(settings: AppSettings | undefined): AppSettings {
+export function normalizeSettings(
+  settings: AppSettings | undefined,
+): AppSettings {
   const language = settings?.ui?.language ?? detectBrowserLanguage();
   const incomingLlm = settings?.llm as LegacyLlmConfig | undefined;
   const provider = normalizeLlmProvider(incomingLlm?.provider);
@@ -601,6 +606,7 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
         timeoutMs: incomingLlm?.timeoutMs,
         ...incomingLlm?.businesses?.analysis,
       }),
+      chunkAnalysis: normalizeLlmBusinessConfig("chunkAnalysis"),
     },
     lookupPromptTemplate: normalizePromptTemplate(
       "lookup",
@@ -615,6 +621,10 @@ function normalizeSettings(settings: AppSettings | undefined): AppSettings {
     analysisPromptTemplate: normalizePromptTemplate(
       "analysis",
       incomingLlm?.analysisPromptTemplate,
+      language,
+    ),
+    chunkAnalysisPromptTemplate: getDefaultPromptTemplate(
+      "chunkAnalysis",
       language,
     ),
   };

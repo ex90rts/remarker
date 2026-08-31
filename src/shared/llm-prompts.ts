@@ -55,6 +55,16 @@ export function buildReadingAnalysisChatMessages(input: {
   });
 }
 
+export function buildLanguageChunkAnalysisChatMessages(input: {
+  systemPrompt: string;
+  selectedText: string;
+}): ChatMessage[] {
+  return buildChatMessages({
+    systemPrompt: input.systemPrompt,
+    userPrompt: input.selectedText.trim(),
+  });
+}
+
 export function buildReadingAnalysisUserPrompt(
   highlights: HighlightRecord[],
   language: SupportedLanguage,

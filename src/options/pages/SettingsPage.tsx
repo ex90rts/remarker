@@ -65,6 +65,11 @@ import {
 import type { Notify, RunAction } from "../types";
 import { downloadFile, formatError, sendMessage } from "../utils";
 
+type ConfigurablePromptTemplateType = Exclude<
+  PromptTemplateType,
+  "chunkAnalysis"
+>;
+
 function getOnboardingCopy(language: AppSettings["ui"]["language"]) {
   const copies = {
     "zh-CN": {
@@ -111,7 +116,7 @@ export function SettingsTab({
   const [disabledSitesText, setDisabledSitesText] = useState("");
   const [promptTemplateError, setPromptTemplateError] = useState("");
   const [promptTemplateType, setPromptTemplateType] =
-    useState<PromptTemplateType>("lookup");
+    useState<ConfigurablePromptTemplateType>("lookup");
   const [isTestingLlm, setIsTestingLlm] = useState(false);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [isAdvancedExpanded, setIsAdvancedExpanded] = useState(false);
@@ -161,6 +166,10 @@ export function SettingsTab({
           )
             ? getDefaultPromptTemplate("analysis", language)
             : savedLlm.analysisPromptTemplate,
+          chunkAnalysisPromptTemplate: getDefaultPromptTemplate(
+            "chunkAnalysis",
+            language,
+          ),
         },
         ui: settings.ui,
       },
@@ -236,6 +245,10 @@ export function SettingsTab({
         analysisPromptTemplate: shouldUpdateAnalysisPrompt
           ? getDefaultPromptTemplate("analysis", language)
           : settings.llm.analysisPromptTemplate,
+        chunkAnalysisPromptTemplate: getDefaultPromptTemplate(
+          "chunkAnalysis",
+          language,
+        ),
       },
       ui: { ...settings.ui, language },
     });
@@ -804,7 +817,13 @@ export function SettingsTab({
                   <Box>
                     <Tabs
                       value={promptTemplateType}
-                      onChange={(_event, value: PromptTemplateType) => {
+                      variant="scrollable"
+                      scrollButtons="auto"
+                      allowScrollButtonsMobile
+                      onChange={(
+                        _event,
+                        value: ConfigurablePromptTemplateType,
+                      ) => {
                         setPromptTemplateType(value);
                         setPromptTemplateError("");
                       }}

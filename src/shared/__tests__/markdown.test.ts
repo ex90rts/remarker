@@ -45,4 +45,24 @@ describe("markdownToSafeHtml", () => {
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
   });
+
+  it("renders nested unordered lists through three levels", () => {
+    const html = markdownToSafeHtml(
+      "- Level 1\n  - Level 2\n    - Level 3\n- Level 1 sibling",
+    );
+
+    expect(html).toBe(
+      "<ul><li>Level 1<ul><li>Level 2<ul><li>Level 3</li></ul></li></ul></li><li>Level 1 sibling</li></ul>",
+    );
+  });
+
+  it("renders ordered lists and mixed nested list types", () => {
+    const html = markdownToSafeHtml(
+      "1. First\n   - Detail\n     1. Nested step\n2. Second",
+    );
+
+    expect(html).toBe(
+      "<ol><li>First<ul><li>Detail<ol><li>Nested step</li></ol></li></ul></li><li>Second</li></ol>",
+    );
+  });
 });

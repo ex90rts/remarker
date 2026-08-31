@@ -1,5 +1,6 @@
 import {
   Box,
+  type BoxProps,
   Button,
   Divider,
   FormLabel,
@@ -14,6 +15,7 @@ import {
   Typography,
 } from "@mui/material";
 import { keyframes } from "@mui/material/styles";
+import type { SxProps, Theme } from "@mui/material/styles";
 import {
   Archive,
   Check,
@@ -27,6 +29,7 @@ import type { MouseEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { Messages } from "../shared/i18n";
 import { detectBrowserLanguage } from "../shared/i18n";
+import { markdownToSafeHtml } from "../shared/markdown";
 import type {
   AppSettings,
   HighlightColor,
@@ -74,11 +77,13 @@ export const PROMPT_TEMPLATE_KEYS = {
   lookup: "lookupPromptTemplate",
   translation: "translationPromptTemplate",
   analysis: "analysisPromptTemplate",
+  chunkAnalysis: "chunkAnalysisPromptTemplate",
 } as const satisfies Record<
   PromptTemplateType,
   | "lookupPromptTemplate"
   | "translationPromptTemplate"
   | "analysisPromptTemplate"
+  | "chunkAnalysisPromptTemplate"
 >;
 
 export const llmOnboardingShimmer = keyframes`
@@ -98,9 +103,15 @@ export const twoLineClampSx = {
   overflowWrap: "anywhere",
 };
 
-export const markdownBodySx = {
+const markdownBodySx = {
   "& p": { my: 1 },
-  "& ul": { my: 1, pl: 3 },
+  "& ul, & ol": { my: 1, pl: 3 },
+  "& li": { my: 0.375 },
+  "& li > ul, & li > ol": { my: 0.5 },
+  "& ul ul": { listStyleType: "circle" },
+  "& ul ul ul": { listStyleType: "square" },
+  "& ol ol": { listStyleType: "lower-alpha" },
+  "& ol ol ol": { listStyleType: "lower-roman" },
   "& blockquote": {
     borderLeft: "3px solid #cbd5e1",
     m: 0,
@@ -130,6 +141,26 @@ export const markdownBodySx = {
   },
   "& th": { bgcolor: "#f8fafc", fontWeight: 700 },
 };
+
+export function MarkdownBody({
+  markdown,
+  className,
+  sx,
+  ...props
+}: Omit<BoxProps, "children" | "dangerouslySetInnerHTML" | "sx"> & {
+  markdown: string;
+  sx?: SxProps<Theme>;
+}) {
+  const sxOverrides = Array.isArray(sx) ? sx : sx ? [sx] : [];
+  return (
+    <Box
+      {...props}
+      className={["markdown-body", className].filter(Boolean).join(" ")}
+      sx={[markdownBodySx, ...sxOverrides] as SxProps<Theme>}
+      dangerouslySetInnerHTML={{ __html: markdownToSafeHtml(markdown) }}
+    />
+  );
+}
 
 export function Toast({
   toast,

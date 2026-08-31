@@ -3,9 +3,11 @@ import {
   Button,
   Chip,
   Collapse,
+  CircularProgress,
   Dialog,
   DialogContent,
   DialogTitle,
+  Divider,
   IconButton,
   MenuItem,
   Stack,
@@ -22,6 +24,7 @@ import {
 import {
   ChevronDown,
   ChevronRight,
+  Plus,
   RefreshCcw,
   RotateCcw,
   Sparkles,
@@ -49,7 +52,13 @@ import {
   type LlmStreamClientMessage,
   type LlmStreamEvent,
 } from "../../shared/llm-stream";
-import { markdownToSafeHtml } from "../../shared/markdown";
+import {
+  LANGUAGE_CHUNK_LIMIT,
+  normalizeLanguageChunkResponse,
+  parseLanguageChunkItems,
+  segmentTextByLanguageChunk,
+  type LanguageChunkItem,
+} from "../../shared/language-chunks";
 import type { DataQuery, ListAllDataResult } from "../../shared/messages";
 import type {
   HighlightColor,
@@ -65,10 +74,10 @@ import {
   EmptyTableRow,
   ExportDropdownButton,
   HIGHLIGHT_COLORS,
+  MarkdownBody,
   RecordsTablePagination,
   SourceLink,
   TableActionBar,
-  markdownBodySx,
   twoLineClampSx,
 } from "../components";
 import { useRuntimeQuery, useValidServerPage } from "../hooks";
@@ -363,15 +372,17 @@ export function HighlightsTab({
                           arrow
                           placement="top"
                           title={
-                            <Typography
-                              variant="body2"
+                            <MarkdownBody
+                              markdown={highlight.note}
                               sx={{
-                                whiteSpace: "pre-wrap",
+                                color: "inherit",
+                                fontSize: "0.875rem",
+                                maxWidth: 360,
                                 overflowWrap: "anywhere",
+                                "& > :first-of-type": { mt: 0 },
+                                "& > :last-child": { mb: 0 },
                               }}
-                            >
-                              {highlight.note}
-                            </Typography>
+                            />
                           }
                         >
                           <Box
@@ -831,18 +842,14 @@ function ReadingAnalysisDialog({
                 </Typography>
               )}
               {displayedResult && (
-                <Box
-                  className="markdown-body"
+                <MarkdownBody
+                  markdown={displayedResult}
                   sx={{
                     fontSize: 14,
                     lineHeight: 1.7,
                     overflowWrap: "anywhere",
-                    ...markdownBodySx,
                     "& > :first-of-type": { mt: 0 },
                     "& > :last-child": { mb: 0 },
-                  }}
-                  dangerouslySetInnerHTML={{
-                    __html: markdownToSafeHtml(displayedResult),
                   }}
                 />
               )}
@@ -984,11 +991,32 @@ function HighlightDetails({
   t: Messages;
 }) {
   const [isEditingNote, setIsEditingNote] = useState(false);
+  const [isEditingLanguageChunks, setIsEditingLanguageChunks] = useState(false);
+  const [isRegeneratingChunks, setIsRegeneratingChunks] = useState(false);
+  const [hoveredLanguageChunk, setHoveredLanguageChunk] = useState<string>();
   const [noteDraft, setNoteDraft] = useState(highlight.note ?? "");
+  const [languageChunksDraft, setLanguageChunksDraft] = useState(
+    highlight.languageChunks ?? "",
+  );
+  const [languageChunkItemsDraft, setLanguageChunkItemsDraft] = useState<
+    LanguageChunkItem[] | undefined
+  >(() => parseLanguageChunkItems(highlight.languageChunks ?? ""));
 
   useEffect(() => {
     if (!isEditingNote) setNoteDraft(highlight.note ?? "");
   }, [highlight.note, isEditingNote]);
+
+  useEffect(() => {
+    if (!isEditingLanguageChunks) {
+      const value = highlight.languageChunks ?? "";
+      setLanguageChunksDraft(value);
+      setLanguageChunkItemsDraft(parseLanguageChunkItems(value));
+    }
+  }, [highlight.languageChunks, isEditingLanguageChunks]);
+
+  useEffect(() => {
+    setHoveredLanguageChunk(undefined);
+  }, [highlight.languageChunks]);
 
   async function saveNote() {
     await runAction(async () => {
@@ -1002,129 +1030,612 @@ function HighlightDetails({
     }, t.options.notices.highlightNoteSaved);
   }
 
+  async function regenerateLanguageChunks() {
+    setHoveredLanguageChunk(undefined);
+    setIsRegeneratingChunks(true);
+    try {
+      await runAction(async () => {
+        await sendMessage({
+          type: "REGENERATE_HIGHLIGHT_LANGUAGE_CHUNKS",
+          id: highlight.id,
+        });
+        await onChange();
+      }, t.options.notices.languageChunksRegenerated);
+    } finally {
+      setIsRegeneratingChunks(false);
+    }
+  }
+
+  async function saveLanguageChunks() {
+    const value = languageChunkItemsDraft
+      ? languageChunkItemsDraft.length > 0
+        ? normalizeLanguageChunkResponse(
+            JSON.stringify(languageChunkItemsDraft),
+          )
+        : ""
+      : languageChunksDraft;
+    await runAction(async () => {
+      await sendMessage({
+        type: "UPDATE_HIGHLIGHT_LANGUAGE_CHUNKS",
+        id: highlight.id,
+        languageChunks: value,
+      });
+      setIsEditingLanguageChunks(false);
+      await onChange();
+    }, t.options.notices.languageChunksSaved);
+  }
+
+  function beginEditingLanguageChunks() {
+    const value = highlight.languageChunks ?? "";
+    const items = parseLanguageChunkItems(value);
+    setHoveredLanguageChunk(undefined);
+    setLanguageChunksDraft(value);
+    setLanguageChunkItemsDraft(items ?? (value ? undefined : []));
+    setIsEditingLanguageChunks(true);
+  }
+
+  function cancelEditingLanguageChunks() {
+    const value = highlight.languageChunks ?? "";
+    setLanguageChunksDraft(value);
+    setLanguageChunkItemsDraft(parseLanguageChunkItems(value));
+    setIsEditingLanguageChunks(false);
+  }
+
+  const languageChunkItemsAreValid =
+    languageChunkItemsDraft?.every(
+      (item) =>
+        Boolean(item.chunk.trim()) &&
+        Boolean(item.meaning.trim()) &&
+        Boolean(item.useCases.trim()),
+    ) ?? Boolean(languageChunksDraft.trim());
+
   return (
     <Box
       sx={{
-        display: "grid",
-        gap: 1,
-        ml: 5,
-        px: 2,
-        py: 1.5,
+        mx: { xs: 0, sm: 2 },
+        my: 1.25,
+        px: { xs: 1.5, sm: 2 },
+        pt: 1.75,
+        pb: 1.5,
+        bgcolor: "#f8faff",
+        border: "1px solid",
+        borderColor: "divider",
+        borderLeft: "3px solid",
+        borderLeftColor: HIGHLIGHT_COLORS[highlight.color],
+        borderRadius: "4px 10px 10px 4px",
+        boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.8)",
         color: "text.primary",
       }}
     >
-      <HighlightDetailLine label={t.options.columns.highlightedText}>
-        <Box
-          component="span"
+      <Box component="section">
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: "block", mb: 0.5, fontWeight: 700 }}
+        >
+          {t.options.columns.highlightedText}
+        </Typography>
+        <Typography
+          component="blockquote"
           sx={{
-            fontSize: "0.95rem",
+            m: 0,
+            fontFamily: "Georgia, 'Noto Serif', serif",
+            fontSize: { xs: "0.96rem", sm: "1.02rem" },
+            fontWeight: 500,
+            lineHeight: 1.7,
+            letterSpacing: "0.005em",
             whiteSpace: "pre-wrap",
             overflowWrap: "anywhere",
           }}
         >
-          {highlight.selectedText}
-        </Box>
-      </HighlightDetailLine>
-      <Box>
-        <Typography component="div" variant="body2">
-          <Box component="b">{t.options.columns.note}</Box>:{" "}
-          <Box
-            component="span"
-            sx={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}
-          >
-            {highlight.note || t.options.empty.note}
-          </Box>
-          <Tooltip
-            arrow
-            title={
-              highlight.note
-                ? t.options.actions.editHighlightNote
-                : t.options.actions.addHighlightNote
-            }
-          >
-            <SquarePen
-              size={16}
-              role="button"
-              tabIndex={0}
-              aria-label={
-                highlight.note
-                  ? t.options.actions.editHighlightNote
-                  : t.options.actions.addHighlightNote
-              }
-              style={{
-                cursor: "pointer",
-                marginLeft: "6px",
-                verticalAlign: "text-bottom",
-              }}
-              onClick={() => {
-                setNoteDraft(highlight.note ?? "");
-                setIsEditingNote(true);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                setNoteDraft(highlight.note ?? "");
-                setIsEditingNote(true);
-              }}
-            />
-          </Tooltip>
+          <HighlightedLanguageChunkText
+            text={highlight.selectedText}
+            activeChunk={hoveredLanguageChunk}
+          />
         </Typography>
-        {isEditingNote && (
-          <Stack spacing={1} sx={{ mt: 1 }}>
-            <TextField
-              autoFocus
-              fullWidth
-              multiline
-              minRows={3}
-              value={noteDraft}
-              label={t.options.columns.note}
-              onChange={(event) => setNoteDraft(event.target.value)}
-            />
-            <Stack direction="row" justifyContent="flex-end" spacing={1}>
-              <Button
-                size="small"
-                onClick={() => {
-                  setNoteDraft(highlight.note ?? "");
-                  setIsEditingNote(false);
-                }}
-              >
-                {t.common.cancel}
-              </Button>
-              <Button
-                size="small"
-                variant="contained"
-                onClick={() => void saveNote()}
-              >
-                {t.options.actions.saveHighlightNote}
-              </Button>
-            </Stack>
-          </Stack>
-        )}
       </Box>
-      <HighlightDetailLine label={t.options.columns.source}>
-        <SourceLink
-          href={highlight.sourceUrl}
-          label={highlight.sourceTitle || highlight.sourceUrl}
-          truncate={false}
-        />
-      </HighlightDetailLine>
-      <HighlightDetailLine label={t.common.created}>
-        {formatCreatedAt(highlight.createdAt)}
-      </HighlightDetailLine>
+
+      <Stack spacing={1.25} sx={{ mt: 1.75 }}>
+        <HighlightDetailSection
+          label={t.options.columns.languageChunks}
+          actions={
+            !isEditingLanguageChunks ? (
+              <>
+                <Tooltip
+                  arrow
+                  title={t.options.actions.regenerateLanguageChunks}
+                >
+                  <span>
+                    <IconButton
+                      size="small"
+                      aria-label={t.options.actions.regenerateLanguageChunks}
+                      disabled={isRegeneratingChunks}
+                      onClick={() => void regenerateLanguageChunks()}
+                      sx={{ color: "text.secondary" }}
+                    >
+                      {isRegeneratingChunks ? (
+                        <CircularProgress size={16} color="inherit" />
+                      ) : (
+                        <RotateCcw size={16} />
+                      )}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip arrow title={t.options.actions.editLanguageChunks}>
+                  <span>
+                    <IconButton
+                      size="small"
+                      aria-label={t.options.actions.editLanguageChunks}
+                      disabled={isRegeneratingChunks}
+                      onClick={beginEditingLanguageChunks}
+                      sx={{ color: "text.secondary" }}
+                    >
+                      <SquarePen size={16} />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </>
+            ) : undefined
+          }
+        >
+          {isEditingLanguageChunks ? (
+            <Stack spacing={1} sx={{ flex: 1, minWidth: 0 }}>
+              {languageChunkItemsDraft ? (
+                <LanguageChunkListEditor
+                  items={languageChunkItemsDraft}
+                  onChange={setLanguageChunkItemsDraft}
+                  t={t}
+                />
+              ) : (
+                <TextField
+                  autoFocus
+                  fullWidth
+                  multiline
+                  minRows={5}
+                  value={languageChunksDraft}
+                  onChange={(event) =>
+                    setLanguageChunksDraft(event.target.value)
+                  }
+                />
+              )}
+              <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                <Button
+                  size="small"
+                  onClick={cancelEditingLanguageChunks}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  disabled={!languageChunkItemsAreValid}
+                  onClick={() => void saveLanguageChunks()}
+                >
+                  {t.options.actions.saveLanguageChunks}
+                </Button>
+              </Stack>
+            </Stack>
+          ) : highlight.languageChunks ? (
+            <LanguageChunksBody
+              value={highlight.languageChunks}
+              onActiveChunkChange={setHoveredLanguageChunk}
+            />
+          ) : (
+            <Typography
+              variant="body2"
+              color="text.disabled"
+              sx={{ py: 0.5, fontStyle: "italic" }}
+            >
+              {t.options.empty.languageChunks}
+            </Typography>
+          )}
+        </HighlightDetailSection>
+
+        <HighlightDetailSection
+          label={t.options.columns.note}
+          actions={
+            !isEditingNote ? (
+              <Tooltip
+                arrow
+                title={
+                  highlight.note
+                    ? t.options.actions.editHighlightNote
+                    : t.options.actions.addHighlightNote
+                }
+              >
+                <IconButton
+                  size="small"
+                  aria-label={
+                    highlight.note
+                      ? t.options.actions.editHighlightNote
+                      : t.options.actions.addHighlightNote
+                  }
+                  onClick={() => {
+                    setNoteDraft(highlight.note ?? "");
+                    setIsEditingNote(true);
+                  }}
+                  sx={{ color: "text.secondary" }}
+                >
+                  <SquarePen size={16} />
+                </IconButton>
+              </Tooltip>
+            ) : undefined
+          }
+        >
+          {isEditingNote ? (
+            <Stack spacing={1}>
+              <TextField
+                autoFocus
+                fullWidth
+                multiline
+                minRows={3}
+                value={noteDraft}
+                label={t.options.columns.note}
+                onChange={(event) => setNoteDraft(event.target.value)}
+              />
+              <Stack direction="row" justifyContent="flex-end" spacing={1}>
+                <Button
+                  size="small"
+                  onClick={() => {
+                    setNoteDraft(highlight.note ?? "");
+                    setIsEditingNote(false);
+                  }}
+                >
+                  {t.common.cancel}
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  onClick={() => void saveNote()}
+                >
+                  {t.options.actions.saveHighlightNote}
+                </Button>
+              </Stack>
+            </Stack>
+          ) : highlight.note ? (
+            <MarkdownBody
+              markdown={highlight.note}
+              sx={{
+                fontSize: "0.875rem",
+                overflowWrap: "anywhere",
+                "& > :first-of-type": { mt: 0.5 },
+                "& > :last-child": { mb: 0 },
+              }}
+            />
+          ) : (
+            <Typography
+              variant="body2"
+              color="text.disabled"
+              sx={{ py: 0.5, fontStyle: "italic" }}
+            >
+              {t.options.empty.note}
+            </Typography>
+          )}
+        </HighlightDetailSection>
+      </Stack>
+
+      <Stack
+        direction={{ xs: "column", sm: "row" }}
+        spacing={{ xs: 0.5, sm: 2 }}
+        justifyContent="space-between"
+        sx={{
+          mt: 1.5,
+          pt: 1.25,
+          borderTop: "1px solid",
+          borderColor: "divider",
+        }}
+      >
+        <Typography component="div" variant="caption" color="text.secondary">
+          <Box component="span" sx={{ fontWeight: 700, mr: 0.75 }}>
+            {t.options.columns.source}
+          </Box>
+          <SourceLink
+            href={highlight.sourceUrl}
+            label={highlight.sourceTitle || highlight.sourceUrl}
+            truncate={false}
+          />
+        </Typography>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ flexShrink: 0 }}
+        >
+          {t.common.created} {formatCreatedAt(highlight.createdAt)}
+        </Typography>
+      </Stack>
     </Box>
   );
 }
 
-function HighlightDetailLine({
+function HighlightedLanguageChunkText({
+  text,
+  activeChunk,
+}: {
+  text: string;
+  activeChunk: string | undefined;
+}) {
+  const segments = segmentTextByLanguageChunk(text, activeChunk);
+  return segments.map((segment, index) =>
+    segment.isMatch ? (
+      <Box
+        component="mark"
+        key={`${index}-${segment.text}`}
+        sx={{
+          bgcolor: "#fde68a",
+          color: "inherit",
+          borderRadius: 0.5,
+          boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.18)",
+        }}
+      >
+        {segment.text}
+      </Box>
+    ) : (
+      <Fragment key={`${index}-${segment.text}`}>{segment.text}</Fragment>
+    ),
+  );
+}
+
+function LanguageChunkListEditor({
+  items,
+  onChange,
+  t,
+}: {
+  items: LanguageChunkItem[];
+  onChange: (items: LanguageChunkItem[]) => void;
+  t: Messages;
+}) {
+  function updateItem(
+    index: number,
+    field: keyof LanguageChunkItem,
+    value: string,
+  ) {
+    onChange(
+      items.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item,
+      ),
+    );
+  }
+
+  return (
+    <Stack spacing={1.25}>
+      {items.map((item, index) => (
+        <Box
+          key={index}
+          sx={{
+            pb: 1.25,
+            borderBottom: "1px solid",
+            borderColor: "divider",
+          }}
+        >
+          <Stack
+            direction="row"
+            alignItems="center"
+            justifyContent="space-between"
+            sx={{ mb: 0.75 }}
+          >
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              fontWeight={700}
+            >
+              #{index + 1}
+            </Typography>
+            <Tooltip
+              arrow
+              title={interpolate(t.options.actions.removeLanguageChunk, {
+                number: String(index + 1),
+              })}
+            >
+              <IconButton
+                size="small"
+                aria-label={interpolate(t.options.actions.removeLanguageChunk, {
+                  number: String(index + 1),
+                })}
+                onClick={() =>
+                  onChange(
+                    items.filter((_, itemIndex) => itemIndex !== index),
+                  )
+                }
+                sx={{ color: "text.secondary" }}
+              >
+                <Trash2 size={15} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <Stack spacing={1}>
+            <TextField
+              autoFocus={index === 0}
+              required
+              fullWidth
+              size="small"
+              label={t.options.columns.languageChunk}
+              value={item.chunk}
+              onChange={(event) =>
+                updateItem(index, "chunk", event.target.value)
+              }
+            />
+            <TextField
+              required
+              fullWidth
+              size="small"
+              label={t.options.columns.languageChunkMeaning}
+              value={item.meaning}
+              onChange={(event) =>
+                updateItem(index, "meaning", event.target.value)
+              }
+            />
+            <TextField
+              required
+              fullWidth
+              multiline
+              minRows={2}
+              size="small"
+              label={t.options.columns.languageChunkUseCases}
+              value={item.useCases}
+              onChange={(event) =>
+                updateItem(index, "useCases", event.target.value)
+              }
+            />
+          </Stack>
+        </Box>
+      ))}
+      <Button
+        size="small"
+        startIcon={<Plus size={16} />}
+        disabled={items.length >= LANGUAGE_CHUNK_LIMIT}
+        onClick={() =>
+          onChange([...items, { chunk: "", meaning: "", useCases: "" }])
+        }
+        sx={{ alignSelf: "flex-start" }}
+      >
+        {t.options.actions.addLanguageChunk}
+      </Button>
+    </Stack>
+  );
+}
+
+function LanguageChunksBody({
+  value,
+  onActiveChunkChange,
+}: {
+  value: string;
+  onActiveChunkChange: (chunk: string | undefined) => void;
+}) {
+  const items = parseLanguageChunkItems(value);
+  if (!items) {
+    // Preserve readability for legacy Markdown and manually edited records.
+    return (
+      <MarkdownBody
+        markdown={value}
+        sx={{
+          flex: 1,
+          minWidth: 0,
+          fontSize: "0.875rem",
+          overflowWrap: "anywhere",
+          "& > :first-of-type": { mt: 0.875 },
+          "& > :last-child": { mb: 0 },
+        }}
+      />
+    );
+  }
+
+  return (
+    <Stack
+      component="ol"
+      divider={<Divider flexItem />}
+      sx={{ m: 0, p: 0, listStyle: "none" }}
+    >
+      {items.map((item, index) => (
+        <LanguageChunkRow
+          key={`${item.chunk}-${index}`}
+          item={item}
+          onActiveChange={onActiveChunkChange}
+        />
+      ))}
+    </Stack>
+  );
+}
+
+function LanguageChunkRow({
+  item,
+  onActiveChange,
+}: {
+  item: LanguageChunkItem;
+  onActiveChange: (chunk: string | undefined) => void;
+}) {
+  return (
+    <Box
+      component="li"
+      tabIndex={0}
+      aria-label={`${item.chunk}: ${item.meaning}`}
+      onMouseEnter={() => onActiveChange(item.chunk)}
+      onMouseLeave={(event) => {
+        if (document.activeElement !== event.currentTarget) {
+          onActiveChange(undefined);
+        }
+      }}
+      onFocus={() => onActiveChange(item.chunk)}
+      onBlur={(event) => {
+        if (!event.currentTarget.matches(":hover")) {
+          onActiveChange(undefined);
+        }
+      }}
+      sx={{
+        mx: -0.75,
+        px: 0.75,
+        py: 1,
+        borderRadius: 1,
+        transition: "background-color 120ms ease",
+        "&:hover, &:focus-visible": { bgcolor: "rgba(59, 130, 246, 0.07)" },
+        "&:focus-visible": { outline: "2px solid rgba(59, 130, 246, 0.35)" },
+      }}
+    >
+      <Typography
+        component="div"
+        variant="body2"
+        sx={{ fontWeight: 700, overflowWrap: "anywhere" }}
+      >
+        {item.chunk}
+      </Typography>
+      <Typography
+        component="div"
+        variant="body2"
+        sx={{ mt: 0.25, overflowWrap: "anywhere" }}
+      >
+        {item.meaning}
+      </Typography>
+      <Typography
+        component="div"
+        variant="caption"
+        color="text.secondary"
+        sx={{
+          display: "block",
+          mt: 0.375,
+          lineHeight: 1.55,
+          overflowWrap: "anywhere",
+        }}
+      >
+        {item.useCases}
+      </Typography>
+    </Box>
+  );
+}
+
+function HighlightDetailSection({
   label,
+  actions,
   children,
 }: {
   label: string;
+  actions?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <Typography component="div" variant="body2">
-      <Box component="b">{label}</Box>: {children}
-    </Typography>
+    <Box
+      component="section"
+      sx={{
+        pt: 1.25,
+        pb: 0.5,
+        borderTop: "1px solid",
+        borderColor: "divider",
+      }}
+    >
+      <Stack
+        direction="row"
+        alignItems="center"
+        spacing={1}
+        sx={{ minHeight: 28 }}
+      >
+        <Typography variant="caption" color="text.secondary" fontWeight={700}>
+          {label}
+        </Typography>
+        {actions && (
+          <Stack direction="row" spacing={0.25} sx={{ ml: "auto !important" }}>
+            {actions}
+          </Stack>
+        )}
+      </Stack>
+      <Box sx={{ minWidth: 0 }}>{children}</Box>
+    </Box>
   );
 }

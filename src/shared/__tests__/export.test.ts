@@ -42,6 +42,20 @@ const highlight: HighlightRecord = {
   updatedAt: "2026-07-07T00:00:00.000Z"
 };
 
+const languageChunks = JSON.stringify([
+  {
+    chunk: "a useful sentence",
+    meaning: "一个有用的句子",
+    useCases: "用于描述具有实际价值的例句",
+  },
+]);
+
+const highlightWithLearningDetails: HighlightRecord = {
+  ...highlight,
+  note: "Remember this",
+  languageChunks,
+};
+
 const vocabulary: VocabularyRecord = {
   id: "v1",
   word: "useful",
@@ -72,7 +86,7 @@ describe("export helpers", () => {
         },
       },
       footprints: [footprint],
-      highlights: [highlight],
+      highlights: [highlightWithLearningDetails],
       vocabulary: [vocabulary],
       includeSensitive: false
     });
@@ -83,22 +97,46 @@ describe("export helpers", () => {
     expect(json).not.toContain("dict-secret");
     expect(json).not.toContain("explanations");
     expect(json).toContain("\"footprints\"");
+    expect(JSON.parse(json).highlights).toEqual([highlightWithLearningDetails]);
   });
 
-  it("creates highlights markdown", () => {
-    const markdown = createHighlightsMarkdownExport([highlight]);
+  it("creates highlights markdown with language chunks as a two-level list", () => {
+    const markdown = createHighlightsMarkdownExport([
+      highlightWithLearningDetails,
+    ]);
     expect(markdown).toContain("# Remarker highlights");
     expect(markdown).toContain("type: remarker-highlights");
     expect(markdown).toContain("> A useful sentence.");
     expect(markdown).toContain("- color: yellow");
     expect(markdown).toContain("[Source](https://example.com/doc)");
+    expect(markdown).toContain("**Language Chunks:**");
+    expect(markdown).toContain([
+      "- **a useful sentence**",
+      "  - Meaning: 一个有用的句子",
+      "  - Usage scenarios: 用于描述具有实际价值的例句",
+    ].join("\n"));
+    expect(markdown).not.toContain(languageChunks);
   });
 
   it("creates Notion-friendly markdown", () => {
-    const markdown = createNotionHighlightsExport([{ ...highlight, note: "Remember this" }]);
+    const markdown = createNotionHighlightsExport([
+      highlightWithLearningDetails,
+    ]);
     expect(markdown).not.toContain("---");
     expect(markdown).toContain("## Doc");
     expect(markdown).toContain("**Note:** Remember this");
+    expect(markdown).toContain("  - Meaning: 一个有用的句子");
+  });
+
+  it("preserves highlight notes and language chunks in incremental JSON", () => {
+    const json = createIncrementalBackupJson({
+      settings: {},
+      footprints: [],
+      highlights: [highlightWithLearningDetails],
+      vocabulary: [],
+    });
+
+    expect(JSON.parse(json).highlights).toEqual([highlightWithLearningDetails]);
   });
 
   it("exports only records changed after the incremental watermark", () => {

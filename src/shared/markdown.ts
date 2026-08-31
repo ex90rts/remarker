@@ -13,14 +13,6 @@ export function markdownToSafeHtml(markdown: string): string {
   const html: string[] = [];
   let inCodeBlock = false;
   let codeLines: string[] = [];
-  let inList = false;
-
-  const closeList = () => {
-    if (inList) {
-      html.push("</ul>");
-      inList = false;
-    }
-  };
 
   for (let index = 0; index < lines.length; index += 1) {
     const rawLine = lines[index];
@@ -32,7 +24,6 @@ export function markdownToSafeHtml(markdown: string): string {
         codeLines = [];
         inCodeBlock = false;
       } else {
-        closeList();
         inCodeBlock = true;
       }
       continue;
@@ -44,12 +35,10 @@ export function markdownToSafeHtml(markdown: string): string {
     }
 
     if (!line.trim()) {
-      closeList();
       continue;
     }
 
     if (isMarkdownTableStart(lines, index)) {
-      closeList();
       const { html: tableHtml, nextIndex } = renderTable(lines, index);
       html.push(tableHtml);
       index = nextIndex - 1;
@@ -58,39 +47,138 @@ export function markdownToSafeHtml(markdown: string): string {
 
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);
     if (heading) {
-      closeList();
       const level = heading[1].length + 2;
       html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
       continue;
     }
 
-    const listItem = /^[-*]\s+(.+)$/.exec(line);
-    if (listItem) {
-      if (!inList) {
-        html.push("<ul>");
-        inList = true;
-      }
-      html.push(`<li>${renderInlineMarkdown(listItem[1])}</li>`);
+    if (parseListLine(line)) {
+      const { html: listHtml, nextIndex } = renderListBlock(lines, index);
+      html.push(listHtml);
+      index = nextIndex - 1;
       continue;
     }
 
     const quote = /^>\s?(.+)$/.exec(line);
     if (quote) {
-      closeList();
       html.push(`<blockquote>${renderInlineMarkdown(quote[1])}</blockquote>`);
       continue;
     }
 
-    closeList();
     html.push(`<p>${renderInlineMarkdown(line)}</p>`);
   }
 
-  closeList();
   if (inCodeBlock) {
     html.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
   }
 
   return html.join("");
+}
+
+type ListTag = "ul" | "ol";
+
+interface MarkdownList {
+  tag: ListTag;
+  indent: number;
+  start?: number;
+  items: MarkdownListItem[];
+}
+
+interface MarkdownListItem {
+  content: string;
+  children: MarkdownList[];
+}
+
+interface ParsedListLine {
+  tag: ListTag;
+  indent: number;
+  start?: number;
+  content: string;
+}
+
+function renderListBlock(
+  lines: string[],
+  startIndex: number,
+): { html: string; nextIndex: number } {
+  const roots: MarkdownList[] = [];
+  const stack: MarkdownList[] = [];
+  let index = startIndex;
+
+  while (index < lines.length) {
+    const parsed = parseListLine(lines[index].trimEnd());
+    if (!parsed) break;
+
+    while (
+      stack.length > 0 &&
+      parsed.indent < stack[stack.length - 1].indent
+    ) {
+      stack.pop();
+    }
+
+    let current = stack[stack.length - 1];
+    const startsNestedList = current && parsed.indent > current.indent;
+    const switchesListType =
+      current && parsed.indent === current.indent && parsed.tag !== current.tag;
+
+    if (!current || startsNestedList || switchesListType) {
+      if (switchesListType) {
+        stack.pop();
+        current = stack[stack.length - 1];
+      }
+
+      const list: MarkdownList = {
+        tag: parsed.tag,
+        indent: parsed.indent,
+        start: parsed.start,
+        items: [],
+      };
+      if (current) {
+        const parentItem = current.items[current.items.length - 1];
+        if (!parentItem) break;
+        parentItem.children.push(list);
+      } else {
+        roots.push(list);
+      }
+      stack.push(list);
+      current = list;
+    }
+
+    current.items.push({ content: parsed.content, children: [] });
+    index += 1;
+  }
+
+  return {
+    html: roots.map(renderList).join(""),
+    nextIndex: index,
+  };
+}
+
+function renderList(list: MarkdownList): string {
+  const startAttribute =
+    list.tag === "ol" && list.start && list.start !== 1
+      ? ` start="${list.start}"`
+      : "";
+  const items = list.items
+    .map(
+      (item) =>
+        `<li>${renderInlineMarkdown(item.content)}${item.children
+          .map(renderList)
+          .join("")}</li>`,
+    )
+    .join("");
+  return `<${list.tag}${startAttribute}>${items}</${list.tag}>`;
+}
+
+function parseListLine(line: string): ParsedListLine | undefined {
+  const match = /^([ \t]*)([-+*]|\d+[.)])[ \t]+(.+)$/.exec(line);
+  if (!match) return undefined;
+  const orderedStart = /^\d+/.exec(match[2]);
+  return {
+    tag: orderedStart ? "ol" : "ul",
+    indent: match[1].replace(/\t/g, "    ").length,
+    start: orderedStart ? Number.parseInt(orderedStart[0], 10) : undefined,
+    content: match[3],
+  };
 }
 
 function renderTable(lines: string[], startIndex: number): { html: string; nextIndex: number } {

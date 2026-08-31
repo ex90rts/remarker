@@ -11,12 +11,14 @@ import {
   type LlmStreamClientMessage,
   type LlmStreamEvent,
 } from "../shared/llm-stream";
+import { normalizeLanguageChunkResponse } from "../shared/language-chunks";
 import { stripOuterCodeFence } from "../shared/markdown";
 import {
   buildLlmModelsUrl,
   parseLlmModelIds,
 } from "../shared/llm-models";
 import {
+  buildLanguageChunkAnalysisChatMessages,
   buildReadingAnalysisChatMessages,
   buildSelectionChatMessages,
   READING_ANALYSIS_HIGHLIGHT_LIMIT,
@@ -244,7 +246,13 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
         putInStore("highlights", message.record),
         ensureFootprintRecord(message.record.sourceUrl, message.record.sourceTitle),
       ]);
+      void analyzeHighlightLanguageChunks(message.record.id).catch((error: unknown) => {
+        console.warn("Language chunk analysis failed.", error);
+      });
       return message.record;
+
+    case "REGENERATE_HIGHLIGHT_LANGUAGE_CHUNKS":
+      return analyzeHighlightLanguageChunks(message.id, true);
 
     case "UPDATE_HIGHLIGHT_STATUS":
       return updateHighlightStatus(message.id, message.status);
@@ -254,6 +262,9 @@ async function handleMessage(message: RuntimeMessage): Promise<unknown> {
 
     case "UPDATE_HIGHLIGHT_NOTE":
       return updateHighlightNote(message.id, message.note);
+
+    case "UPDATE_HIGHLIGHT_LANGUAGE_CHUNKS":
+      return updateHighlightLanguageChunks(message.id, message.languageChunks);
 
     case "UPDATE_HIGHLIGHT_STATUSES":
       return updateHighlightStatuses(message.updates);
@@ -586,6 +597,21 @@ async function updateHighlightNote(
   return next;
 }
 
+async function updateHighlightLanguageChunks(
+  id: string,
+  languageChunks: string,
+): Promise<HighlightRecord | undefined> {
+  const record = await getFromStore<HighlightRecord>("highlights", id);
+  if (!record) return undefined;
+  const next = {
+    ...record,
+    languageChunks: languageChunks.trim() || undefined,
+    updatedAt: new Date().toISOString(),
+  };
+  await putInStore("highlights", next);
+  return next;
+}
+
 async function updateFootprintStar(
   urlKey: string,
   starred: boolean,
@@ -657,10 +683,12 @@ async function explainSelection(
       translation: sanitizedResult,
       updatedAt: new Date().toISOString(),
     };
-    await Promise.all([
-      putInStore("vocabulary", currentRecord),
-      ensureFootprintRecord(currentRecord.sourceUrl, currentRecord.sourceTitle),
-    ]);
+    if (!input.previewOnly) {
+      await Promise.all([
+        putInStore("vocabulary", currentRecord),
+        ensureFootprintRecord(currentRecord.sourceUrl, currentRecord.sourceTitle),
+      ]);
+    }
     return vocabularyToLookupResult(currentRecord);
   }
 
@@ -682,6 +710,20 @@ async function explainSelection(
   });
 
   const now = new Date().toISOString();
+  if (input.previewOnly) {
+    return {
+      id: cached?.id ?? crypto.randomUUID(),
+      selectionKind: input.selectionKind,
+      selectedText: input.selectedText,
+      context,
+      sourceUrl: input.sourceUrl,
+      sourceTitle: input.sourceTitle,
+      anchor: input.anchor,
+      result,
+      createdAt: cached?.createdAt ?? now,
+    };
+  }
+
   const record: VocabularyRecord = normalizeVocabularyReview({
     ...cached,
     id: cached?.id ?? crypto.randomUUID(),
@@ -746,6 +788,51 @@ async function analyzeReading(
   };
   await saveReadingAnalysis(record);
   return record;
+}
+
+async function analyzeHighlightLanguageChunks(
+  id: string,
+  overwrite = false,
+): Promise<HighlightRecord | undefined> {
+  const [settings, highlight] = await Promise.all([
+    getSettings(),
+    getFromStore<HighlightRecord>("highlights", id),
+  ]);
+  if (!highlight) return undefined;
+
+  const systemPrompt = settings.llm.chunkAnalysisPromptTemplate.trim();
+  if (!systemPrompt) {
+    throw new Error("Language chunk analysis system prompt cannot be empty.");
+  }
+  const llm = validateRequiredLlmConfiguration(settings, "chunkAnalysis");
+  const rawLanguageChunks = await callOpenAiCompatibleChatApi({
+    provider: llm.provider,
+    baseUrl: llm.baseUrl,
+    apiKey: llm.apiKey,
+    model: llm.model,
+    temperature: llm.temperature,
+    timeoutMs: llm.timeoutMs,
+    messages: buildLanguageChunkAnalysisChatMessages({
+      systemPrompt,
+      selectedText: highlight.selectedText,
+    }),
+    responseType: "json",
+  });
+  const languageChunks = normalizeLanguageChunkResponse(rawLanguageChunks);
+
+  // Preserve edits made while the LLM request was running.
+  const current = await getFromStore<HighlightRecord>("highlights", id);
+  if (!current) return undefined;
+  if (!overwrite && current.languageChunks !== highlight.languageChunks) {
+    return current;
+  }
+  const next = {
+    ...current,
+    languageChunks,
+    updatedAt: new Date().toISOString(),
+  };
+  await putInStore("highlights", next);
+  return next;
 }
 
 async function enrichVocabularyPronunciation(record: VocabularyRecord): Promise<void> {
@@ -1116,6 +1203,7 @@ async function callOpenAiCompatibleChatApi(input: {
   temperature: number;
   timeoutMs: number;
   messages: Array<{ role: "system" | "user"; content: string }>;
+  responseType?: "json";
   signal?: AbortSignal;
   onChunk?: (content: string) => void;
 }): Promise<string> {
@@ -1129,6 +1217,9 @@ async function callOpenAiCompatibleChatApi(input: {
     temperature: input.temperature,
     messages: input.messages,
     ...getReasoningDisabledParams(input.provider, input.model),
+    ...(input.responseType === "json"
+      ? { response_format: { type: "json_object" } }
+      : {}),
     stream: true,
   };
 
